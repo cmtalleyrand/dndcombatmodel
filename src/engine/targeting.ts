@@ -47,8 +47,11 @@ export function resolveTargets(
     case 'highestHpEnemy':
       return takeSorted(enemies, (a, b) => b.hp - a.hp, count);
 
-    case 'lowestHpAlly':
-      return takeSorted(allies, (a, b) => a.hp - b.hp, count);
+    case 'lowestHpAlly': {
+      // Healing should also be able to target downed allies (0 HP) to revive them,
+      // so this strategy includes all same-side combatants (alive or downed), lowest HP first.
+      return takeSorted(alliesOf(state, actor), (a, b) => a.hp - b.hp, count);
+    }
 
     case 'namedThenLowestHpEnemy': {
       const named = (selector.namedTargets ?? actor.base.defaultTargets ?? [])

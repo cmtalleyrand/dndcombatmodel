@@ -36,9 +36,8 @@ export function evaluateCondition(
       return hpPct(actor) < (cond.value ?? 0);
 
     case 'anyAllyHpBelowPct':
-      return alliesOf(state, actor)
-        .filter(isAlive)
-        .some((a) => hpPct(a) < (cond.value ?? 0));
+      // Downed allies (0 HP) count as below any positive threshold so healers prioritize them.
+      return alliesOf(state, actor).some((a) => hpPct(a) < (cond.value ?? 0));
 
     case 'enemyCountAtLeast':
       return enemiesOf(state, actor).filter(isAlive).length >= (cond.value ?? 0);

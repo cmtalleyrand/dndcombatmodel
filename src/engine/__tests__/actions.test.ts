@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { runSimulation } from '../simulator';
 import { buildCombatState } from '../state';
 import { performAction } from '../actions';
+import { chooseAction } from '../rules';
 import { RNG } from '../dice';
 import type { Action, Combatant, Scenario } from '../types';
 import type { LogEvent } from '../log';
@@ -61,6 +62,31 @@ describe('healing', () => {
     const state = mkState([cleric, ally], [heal]);
     performAction(state, new RNG(1), state.combatants[0], heal, [state.combatants[1]], []);
     expect(state.combatants[0].spellSlots[1]).toBe(1);
+  });
+});
+
+describe('targeting downed allies for healing', () => {
+  it('a heal rule selects and revives a downed ally', () => {
+    const heal: Action = { id: 'cure', name: 'Cure Wounds', kind: 'spell', targets: 1, heal: '1d8+3', spellLevel: 1 };
+    const sword: Action = { id: 'sw', name: 'Sword', kind: 'attack', targets: 1, attackBonus: 5, damage: '1d8+3' };
+    const cleric = mkCombatant('cleric', 'pc', {
+      spellSlots: { 1: 1 },
+      actionIds: ['cure', 'sw'],
+      script: [
+        { priority: 1, condition: { type: 'anyAllyHpBelowPct', value: 50 }, actionId: 'cure', target: { strategy: 'lowestHpAlly' } },
+        { priority: 2, condition: { type: 'always' }, actionId: 'sw', target: { strategy: 'lowestHpEnemy' } },
+      ],
+    });
+    const ally = mkCombatant('ally', 'pc');
+    const enemy = mkCombatant('enemy', 'monster');
+    const state = mkState([cleric, ally, enemy], [heal, sword]);
+    // down the ally
+    state.combatants[1].hp = 0;
+    state.combatants[1].down = true;
+
+    const choice = chooseAction(state, state.combatants[0]);
+    expect(choice?.action.id).toBe('cure');
+    expect(choice?.targets[0]?.base.id).toBe('ally');
   });
 });
 
