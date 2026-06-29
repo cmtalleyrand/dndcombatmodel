@@ -5,12 +5,13 @@ import { Results } from './Results';
 
 interface Props {
   scenario: Scenario;
+  stats: AggregateStats | null;
+  onResults: (stats: AggregateStats) => void;
 }
 
-export function RunTab({ scenario }: Props) {
+export function RunTab({ scenario, stats, onResults }: Props) {
   const [sims, setSims] = useState(500);
   const [seed, setSeed] = useState(12345);
-  const [stats, setStats] = useState<AggregateStats | null>(null);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState<number | null>(null);
 
@@ -24,7 +25,7 @@ export function RunTab({ scenario }: Props) {
     setTimeout(() => {
       const t0 = performance.now();
       const { stats } = runMany(scenario, Math.max(1, sims), seed >>> 0);
-      setStats(stats);
+      onResults(stats);
       setElapsed(performance.now() - t0);
       setRunning(false);
     }, 10);
