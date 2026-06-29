@@ -64,6 +64,11 @@ export function evaluateCondition(
     case 'notConcentrating':
       return !actor.concentratingOn;
 
+    case 'anyEnemyConcentrating':
+      return enemiesOf(state, actor)
+        .filter(isAlive)
+        .some((e) => !!e.concentratingOn);
+
     case 'slotAvailable':
       return hasSlot(actor, action);
 

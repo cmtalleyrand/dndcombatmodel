@@ -13,10 +13,34 @@ deployed as a static site to GitHub Pages.
 ## Features
 
 - **Combatants:** HP, AC, six ability scores, saving-throw proficiencies, proficiency
-  bonus, and spell slots for up to 4 PCs and 8 monsters.
-- **Reusable action library:** attacks (with multiattack), spells, and abilities with
-  to-hit/damage, save-for-half, healing, applied conditions, spell-slot cost,
-  concentration, and limited uses. Define once, reuse across combatants.
+  bonus, a spellcasting ability, and spell slots for up to 4 PCs and 8 monsters.
+- **Character-derived actions:** weapon attacks pick a weapon from a library and the
+  to-hit (STR or DEX via finesse/ranged + proficiency) and damage (weapon die + ability
+  mod) are computed automatically; spells derive their attack bonus and save DC from the
+  caster's spellcasting ability. Optional additive **modifiers** layer on top — `+to hit`,
+  `+damage`, bonus damage dice, a magic `+N` (hit & damage), and `+save DC`. The editor
+  shows the derived result live (e.g. `+5 to hit, 1d8+3 slashing (STR)`). Legacy explicit
+  numbers still work for fully-manual actions and imported v1 scenarios.
+- **Reusable libraries:** an action library (attacks/spells/abilities) and a weapon
+  library, both editable. **Duplicate** any action or weapon to make an edited variant.
+- **Script reuse:** duplicate a single rule, **copy a whole script** from another
+  combatant, or **save/apply named script presets** (stored in your browser).
+- **Linear positioning:** each combatant has a position on a 1D battlefield (15ft
+  blocks) and a speed. A turn is *move up to speed + one action*; attackers
+  **auto-advance** toward an out-of-range target before striking (and explicit
+  Move actions advance or kite). Weapons/spells have a **range** (with long-range
+  disadvantage) and spells can have a linear **AoE radius**. A Battlefield map on the
+  Initiative tab plots everyone.
+- **Conditional feature riders:** bonus damage gated by a trigger — **Sneak Attack**
+  (once/turn, needs advantage or an ally adjacent to the target), **Rage** (bonus melee
+  damage + physical resistance while raging), and **Hunter's Mark/Hex** (bonus dice vs a
+  marked target). Add them to any attack from the action editor.
+- **Flexible targeting:** reusable, explicit **target priority lists** (e.g. "enemy1 →
+  enemy2 → then nearest") referenced by rules, plus nearest/lowest-HP fallbacks — no
+  assumption of omniscient knowledge.
+- **Concentration:** spells that require it drop prior concentration, force a CON save
+  when the caster takes damage, and end when the caster is downed; rules can branch on
+  *not concentrating* / *an enemy is concentrating*.
 - **Priority scripts:** each combatant runs an ordered list of rules. The first rule
   whose *condition* passes and whose action is *available* (slot left, legal target)
   fires. Conditions include: always, self/ally HP below %, living-enemy count,
@@ -38,9 +62,9 @@ deployed as a static site to GitHub Pages.
 
 ## What the simulator does *not* model yet
 
-Reactions (opportunity attacks, Shield, Counterspell), real movement/positioning and
-area geometry, combining a move with an action in the same turn, and finer rules edge
-cases (legendary actions, full resistance/immunity matrices, death saves). These are
+Reactions (opportunity attacks, Shield, Counterspell), 2D positioning and area geometry
+(space is modelled as a 1D line), and finer rules edge cases (legendary actions, full
+resistance/immunity matrices beyond physical resistance, death-save detail). These are
 intentionally deferred — see the in-app notes and the plan.
 
 ## Getting started

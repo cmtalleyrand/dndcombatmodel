@@ -265,6 +265,11 @@ td.num, th.num {
   color: var(--muted);
 }
 
+.log .move {
+  color: #8a9bb5;
+  font-style: italic;
+}
+
 .stat-big {
   font-size: 1.6rem;
   font-weight: 700;
@@ -286,3 +291,92 @@ td.num, th.num {
   .grid-2 { grid-template-columns: 1fr; }
   .ability-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* --- Phase 2: sectioned editors, derived previews, sentence-style rules --- */
+
+.section {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.section > .section-title {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.field-row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 0.4rem;
+}
+
+.derived {
+  display: inline-block;
+  background: rgba(74, 134, 199, 0.12);
+  border: 1px solid rgba(74, 134, 199, 0.4);
+  color: #bcd6f0;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.76rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.modifiers {
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.check-inline {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.rule-sentence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  line-height: 2.1;
+}
+
+.rule-sentence .kw {
+  color: var(--accent-2);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+
+button.mini {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.76rem;
+}
+
+.action-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.3rem 0;
+  border-bottom: 1px dotted var(--border);
+}
+.action-line:last-child { border-bottom: none; }

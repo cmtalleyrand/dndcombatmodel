@@ -1,6 +1,28 @@
-import { useState } from 'react';
-import type { Ability, Action, ActionKind, ConditionKind, DamageType, Scenario } from '../engine/types';
-import { genId, removeAction, upsertAction } from '../state/store';
+import { useMemo, useState } from 'react';
+import type {
+  Ability,
+  Action,
+  ActionKind,
+  ConditionKind,
+  DamageRider,
+  DamageType,
+  Scenario,
+  TargetList,
+  TargetStrategy,
+  Weapon,
+  WeaponProperty,
+} from '../engine/types';
+import {
+  duplicateAction,
+  genId,
+  removeAction,
+  removeTargetList,
+  removeWeapon,
+  upsertAction,
+  upsertTargetList,
+  upsertWeapon,
+} from '../state/store';
+import { describeActionGeneric } from './describe';
 
 interface Props {
   scenario: Scenario;
@@ -13,34 +35,52 @@ const DAMAGE_TYPES: DamageType[] = [
   'poison', 'necrotic', 'radiant', 'force', 'psychic', 'thunder',
 ];
 const ABILITIES: Ability[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+const WEAPON_PROPS: WeaponProperty[] = ['finesse', 'ranged', 'versatile', 'twoHanded', 'light', 'heavy', 'thrown'];
 
 export function ActionLibraryTab({ scenario, setScenario }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const weaponsById = useMemo(() => {
+    const m: Record<string, Weapon> = {};
+    for (const w of scenario.weapons) m[w.id] = w;
+    return m;
+  }, [scenario.weapons]);
 
   const add = () => {
-    const a: Action = { id: genId('act'), name: 'New Action', kind: 'attack', targets: 1, attackBonus: 4, attackCount: 1, damage: '1d6+2', damageType: 'slashing' };
+    const a: Action = {
+      id: genId('act'),
+      name: 'New Attack',
+      kind: 'attack',
+      targets: 1,
+      weaponId: scenario.weapons[0]?.id,
+      attackCount: 1,
+    };
     setScenario(upsertAction(scenario, a));
     setOpenId(a.id);
   };
 
-  const used = (id: string) => scenario.combatants.filter((c) => c.actionIds.includes(id) || c.script.some((r) => r.actionId === id));
+  const used = (id: string) =>
+    scenario.combatants.filter((c) => c.actionIds.includes(id) || c.script.some((r) => r.actionId === id));
 
   return (
     <div>
+      <WeaponsSection scenario={scenario} setScenario={setScenario} />
+      <TargetListsSection scenario={scenario} setScenario={setScenario} />
+
       <div className="panel">
         <div className="row spread">
           <h2>Action Library</h2>
           <button onClick={add}>+ Add Action</button>
         </div>
         <p className="help">
-          Reusable attacks, spells and abilities. Combatants reference these by selecting them on
-          their card and using them in script rules. For now move, an attack sequence, a spell, or
-          an ability each consume a full turn.
+          Reusable attacks, spells and abilities. Weapon attacks and spells derive their numbers
+          from whoever uses them; the adjustments below add on top. Duplicate an action to make an
+          edited variant.
         </p>
       </div>
 
       {scenario.actions.map((a) => {
         const usedBy = used(a.id);
+        const builtin = a.id === 'act-dodge' || a.id === 'act-move';
         return (
           <div className="card" key={a.id}>
             <div className="row spread">
@@ -48,27 +88,39 @@ export function ActionLibraryTab({ scenario, setScenario }: Props) {
                 <strong>{a.name}</strong>
                 <span className="tag">{a.kind}</span>
                 {a.spellLevel ? <span className="tag">L{a.spellLevel} slot</span> : null}
-                {a.damage ? <span className="tag">{a.damage} {a.damageType}</span> : null}
-                {a.heal ? <span className="tag">heal {a.heal}</span> : null}
                 {a.concentration ? <span className="tag">concentration</span> : null}
                 <span className="tag">used by {usedBy.length}</span>
               </div>
               <div className="row">
-                <button className="secondary" onClick={() => setOpenId(openId === a.id ? null : a.id)}>
+                <button className="secondary mini" onClick={() => setOpenId(openId === a.id ? null : a.id)}>
                   {openId === a.id ? 'Collapse' : 'Edit'}
                 </button>
-                <button
-                  className="danger"
-                  disabled={a.id === 'act-dodge' || a.id === 'act-move'}
-                  onClick={() => setScenario(removeAction(scenario, a.id))}
-                >
+                {!builtin && (
+                  <button
+                    className="secondary mini"
+                    onClick={() => {
+                      const { scenario: next, newId } = duplicateAction(scenario, a.id);
+                      setScenario(next);
+                      setOpenId(newId);
+                    }}
+                  >
+                    ⧉ Duplicate
+                  </button>
+                )}
+                <button className="danger mini" disabled={builtin} onClick={() => setScenario(removeAction(scenario, a.id))}>
                   Delete
                 </button>
               </div>
             </div>
+            {!builtin && (
+              <div className="derived" style={{ marginTop: '0.4rem' }}>
+                {describeActionGeneric(a, weaponsById)}
+              </div>
+            )}
             {openId === a.id && (
               <ActionEditor
                 action={a}
+                weapons={scenario.weapons}
                 onChange={(next) => setScenario(upsertAction(scenario, next))}
               />
             )}
@@ -79,14 +131,15 @@ export function ActionLibraryTab({ scenario, setScenario }: Props) {
   );
 }
 
-function ActionEditor({ action, onChange }: { action: Action; onChange: (a: Action) => void }) {
+function ActionEditor({ action, weapons, onChange }: { action: Action; weapons: Weapon[]; onChange: (a: Action) => void }) {
   const up = (patch: Partial<Action>) => onChange({ ...action, ...patch });
   const isAttack = action.kind === 'attack';
   const isSpellLike = action.kind === 'spell' || action.kind === 'ability';
+  const weapon = action.weaponId ? weapons.find((w) => w.id === action.weaponId) : undefined;
 
   return (
     <div style={{ marginTop: '0.75rem' }}>
-      <div className="row">
+      <div className="field-row">
         <label>
           Name
           <input value={action.name} onChange={(e) => up({ name: e.target.value })} />
@@ -101,86 +154,205 @@ function ActionEditor({ action, onChange }: { action: Action; onChange: (a: Acti
           Targets
           <input className="num" type="number" min={0} value={action.targets} onChange={(e) => up({ targets: +e.target.value })} />
         </label>
-        {isSpellLike && (
-          <>
-            <label>
-              Slot level
-              <input className="num" type="number" min={0} value={action.spellLevel ?? 0} onChange={(e) => up({ spellLevel: +e.target.value || undefined })} />
-            </label>
-            <label style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: '0.9rem' }}>
-              <input type="checkbox" checked={action.concentration ?? false} onChange={(e) => up({ concentration: e.target.checked })} />
-              concentration
-            </label>
-          </>
-        )}
         <label>
           Limited uses
           <input className="num" type="number" min={0} placeholder="∞" value={action.uses ?? ''} onChange={(e) => up({ uses: e.target.value === '' ? undefined : +e.target.value })} />
         </label>
       </div>
 
-      {(isAttack || isSpellLike) && (
-        <div className="row" style={{ marginTop: '0.4rem' }}>
-          <label>
-            To-hit bonus
-            <input className="num" type="number" placeholder="—" value={action.attackBonus ?? ''} onChange={(e) => up({ attackBonus: e.target.value === '' ? undefined : +e.target.value })} />
-          </label>
-          {isAttack && (
+      {isAttack && (
+        <div className="section">
+          <div className="section-title">Weapon (to-hit & damage derive from the wielder)</div>
+          <div className="field-row">
+            <label>
+              Weapon
+              <select value={action.weaponId ?? ''} onChange={(e) => up({ weaponId: e.target.value || undefined })}>
+                <option value="">— manual (no weapon) —</option>
+                {weapons.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name} ({w.damage} {w.damageType})</option>
+                ))}
+              </select>
+            </label>
             <label>
               Attacks/turn
               <input className="num" type="number" min={1} value={action.attackCount ?? 1} onChange={(e) => up({ attackCount: +e.target.value })} />
             </label>
+            {weapon?.versatileDamage && (
+              <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+                <input type="checkbox" checked={action.useVersatile ?? false} onChange={(e) => up({ useVersatile: e.target.checked })} />
+                two-handed ({weapon.versatileDamage})
+              </label>
+            )}
+            <label>
+              Ability
+              <select value={action.abilityOverride ?? ''} onChange={(e) => up({ abilityOverride: (e.target.value || undefined) as Ability | undefined })}>
+                <option value="">auto ({weapon ? (weapon.properties.includes('ranged') ? 'DEX' : weapon.properties.includes('finesse') ? 'STR/DEX' : 'STR') : 'STR'})</option>
+                {ABILITIES.map((ab) => <option key={ab} value={ab}>{ab.toUpperCase()}</option>)}
+              </select>
+            </label>
+            <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+              <input type="checkbox" checked={action.notProficient ?? false} onChange={(e) => up({ notProficient: e.target.checked })} />
+              not proficient
+            </label>
+          </div>
+          {!weapon && (
+            <div className="field-row">
+              <label>
+                Manual to-hit
+                <input className="num" type="number" placeholder="0" value={action.attackBonus ?? ''} onChange={(e) => up({ attackBonus: e.target.value === '' ? undefined : +e.target.value })} />
+              </label>
+              <label>
+                Manual damage
+                <input className="short" placeholder="e.g. 1d8+3" value={action.damage ?? ''} onChange={(e) => up({ damage: e.target.value || undefined })} />
+              </label>
+              <label>
+                Damage type
+                <select value={action.damageType ?? 'slashing'} onChange={(e) => up({ damageType: e.target.value as DamageType })}>
+                  {DAMAGE_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </label>
+            </div>
           )}
+        </div>
+      )}
+
+      {isSpellLike && (
+        <div className="section">
+          <div className="section-title">Spell / Ability</div>
+          <div className="field-row">
+            <label>
+              Slot level
+              <input className="num" type="number" min={0} value={action.spellLevel ?? 0} onChange={(e) => up({ spellLevel: +e.target.value || undefined })} />
+            </label>
+            <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+              <input type="checkbox" checked={action.concentration ?? false} onChange={(e) => up({ concentration: e.target.checked })} />
+              concentration
+            </label>
+            <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+              <input type="checkbox" checked={action.spellAttack ?? false} onChange={(e) => up({ spellAttack: e.target.checked, save: e.target.checked ? undefined : action.save })} />
+              spell attack roll
+            </label>
+          </div>
+
+          <div className="field-row">
+            <label>
+              Damage
+              <input className="short" placeholder="e.g. 2d6" value={action.damage ?? ''} onChange={(e) => up({ damage: e.target.value || undefined })} />
+            </label>
+            <label>
+              Damage type
+              <select value={action.damageType ?? 'force'} onChange={(e) => up({ damageType: e.target.value as DamageType })}>
+                {DAMAGE_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </label>
+            <label>
+              Heal
+              <input className="short" placeholder="e.g. 1d8" value={action.heal ?? ''} onChange={(e) => up({ heal: e.target.value || undefined })} />
+            </label>
+            {action.heal && (
+              <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+                <input type="checkbox" checked={action.addSpellModToHeal ?? false} onChange={(e) => up({ addSpellModToHeal: e.target.checked })} />
+                + spell mod
+              </label>
+            )}
+          </div>
+
+          <div className="field-row">
+            <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+              <input
+                type="checkbox"
+                checked={!!action.save}
+                onChange={(e) => up({ save: e.target.checked ? { ability: 'dex', onSuccess: 'half' } : undefined, spellAttack: e.target.checked ? false : action.spellAttack })}
+              />
+              save-based (DC derived)
+            </label>
+            {action.save && (
+              <>
+                <label>
+                  Save ability
+                  <select value={action.save.ability} onChange={(e) => up({ save: { ...action.save!, ability: e.target.value as Ability } })}>
+                    {ABILITIES.map((ab) => <option key={ab} value={ab}>{ab.toUpperCase()}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Explicit DC
+                  <input className="num" type="number" placeholder="auto" value={action.save.dc ?? ''} onChange={(e) => up({ save: { ...action.save!, dc: e.target.value === '' ? undefined : +e.target.value } })} />
+                </label>
+                <label>
+                  On success
+                  <select value={action.save.onSuccess} onChange={(e) => up({ save: { ...action.save!, onSuccess: e.target.value as 'half' | 'none' } })}>
+                    <option value="half">half damage</option>
+                    <option value="none">no effect</option>
+                  </select>
+                </label>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(isAttack || isSpellLike) && (
+        <div className="modifiers">
+          <div className="section-title" style={{ marginBottom: '0.4rem' }}>Modifiers (added on top of derived values)</div>
+          <div className="field-row">
+            <label>
+              + to hit
+              <input className="num" type="number" placeholder="0" value={action.toHitBonus ?? ''} onChange={(e) => up({ toHitBonus: e.target.value === '' ? undefined : +e.target.value })} />
+            </label>
+            <label>
+              + damage
+              <input className="num" type="number" placeholder="0" value={action.damageBonus ?? ''} onChange={(e) => up({ damageBonus: e.target.value === '' ? undefined : +e.target.value })} />
+            </label>
+            <label>
+              + bonus dice
+              <input className="short" placeholder="e.g. 1d6" value={action.bonusDamageDice ?? ''} onChange={(e) => up({ bonusDamageDice: e.target.value || undefined })} />
+            </label>
+            <label>
+              magic (hit & dmg)
+              <input className="num" type="number" placeholder="0" value={action.magicBonus ?? ''} onChange={(e) => up({ magicBonus: e.target.value === '' ? undefined : +e.target.value })} />
+            </label>
+            {isSpellLike && action.save && (
+              <label>
+                + save DC
+                <input className="num" type="number" placeholder="0" value={action.saveDcBonus ?? ''} onChange={(e) => up({ saveDcBonus: e.target.value === '' ? undefined : +e.target.value })} />
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(isAttack || isSpellLike) && (
+        <div className="section">
+          <div className="section-title">Range & area (feet)</div>
+          <div className="field-row">
+            <label>
+              Range
+              <input className="num" type="number" placeholder={isAttack ? 'weapon' : '∞'} value={action.range ?? ''} onChange={(e) => up({ range: e.target.value === '' ? undefined : +e.target.value })} />
+            </label>
+            <label>
+              AoE radius
+              <input className="num" type="number" placeholder="—" value={action.aoeRadius ?? ''} onChange={(e) => up({ aoeRadius: e.target.value === '' ? undefined : +e.target.value })} />
+            </label>
+            <span className="help" style={{ marginTop: '0.9rem' }}>
+              Melee range 0 = same block. AoE hits everyone within radius of the primary target.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {action.kind === 'move' && (
+        <div className="field-row">
           <label>
-            Damage
-            <input className="short" placeholder="e.g. 1d8+3" value={action.damage ?? ''} onChange={(e) => up({ damage: e.target.value || undefined })} />
-          </label>
-          <label>
-            Damage type
-            <select value={action.damageType ?? 'slashing'} onChange={(e) => up({ damageType: e.target.value as DamageType })}>
-              {DAMAGE_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+            Move mode
+            <select value={action.moveMode ?? 'advance'} onChange={(e) => up({ moveMode: e.target.value as 'advance' | 'retreat' })}>
+              <option value="advance">advance toward nearest enemy</option>
+              <option value="retreat">retreat from nearest enemy (kite)</option>
             </select>
           </label>
         </div>
       )}
 
-      {isSpellLike && (
-        <div className="row" style={{ marginTop: '0.4rem' }}>
-          <label>
-            Heal
-            <input className="short" placeholder="e.g. 1d8+3" value={action.heal ?? ''} onChange={(e) => up({ heal: e.target.value || undefined })} />
-          </label>
-          <label style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: '0.9rem' }}>
-            <input
-              type="checkbox"
-              checked={!!action.save}
-              onChange={(e) => up({ save: e.target.checked ? { ability: 'dex', dc: 13, onSuccess: 'half' } : undefined })}
-            />
-            save-based
-          </label>
-          {action.save && (
-            <>
-              <label>
-                Save
-                <select value={action.save.ability} onChange={(e) => up({ save: { ...action.save!, ability: e.target.value as Ability } })}>
-                  {ABILITIES.map((ab) => <option key={ab} value={ab}>{ab.toUpperCase()}</option>)}
-                </select>
-              </label>
-              <label>
-                DC
-                <input className="num" type="number" value={action.save.dc} onChange={(e) => up({ save: { ...action.save!, dc: +e.target.value } })} />
-              </label>
-              <label>
-                On success
-                <select value={action.save.onSuccess} onChange={(e) => up({ save: { ...action.save!, onSuccess: e.target.value as 'half' | 'none' } })}>
-                  <option value="half">half damage</option>
-                  <option value="none">no effect</option>
-                </select>
-              </label>
-            </>
-          )}
-        </div>
-      )}
+      {(isAttack || isSpellLike) && <RidersEditor action={action} onChange={onChange} />}
 
       <ConditionEditor action={action} onChange={onChange} />
 
@@ -192,7 +364,82 @@ function ActionEditor({ action, onChange }: { action: Action; onChange: (a: Acti
   );
 }
 
-const COND_KINDS = ['prone', 'poisoned', 'asleep', 'blinded', 'restrained', 'stunned', 'paralyzed', 'frightened', 'blessed'] as const;
+const COND_KINDS: ConditionKind[] = ['prone', 'poisoned', 'asleep', 'blinded', 'restrained', 'stunned', 'paralyzed', 'frightened', 'blessed', 'raging', 'marked'];
+
+const RIDER_TRIGGERS: { value: DamageRider['trigger']; label: string }[] = [
+  { value: 'always', label: 'always on hit' },
+  { value: 'hasAdvantage', label: 'when you have advantage' },
+  { value: 'advantageOrAllyAdjacent', label: 'advantage or ally adjacent (Sneak Attack)' },
+  { value: 'targetHasCondition', label: 'target has condition (Hunter’s Mark)' },
+  { value: 'selfHasCondition', label: 'self has condition (Rage)' },
+];
+
+const RIDER_PRESETS: Record<string, DamageRider> = {
+  sneak: { label: 'Sneak Attack', bonusDice: '2d6', trigger: 'advantageOrAllyAdjacent', oncePerTurn: true },
+  rage: { label: 'Rage', bonusFlat: 2, trigger: 'selfHasCondition', condition: 'raging', meleeOnly: true },
+  mark: { label: "Hunter's Mark", bonusDice: '1d6', trigger: 'targetHasCondition', condition: 'marked' },
+};
+
+function RidersEditor({ action, onChange }: { action: Action; onChange: (a: Action) => void }) {
+  const riders = action.riders ?? [];
+  const set = (next: DamageRider[]) => onChange({ ...action, riders: next.length ? next : undefined });
+  const upd = (i: number, patch: Partial<DamageRider>) => set(riders.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  return (
+    <div className="section">
+      <div className="section-title">Conditional damage riders</div>
+      {riders.map((r, i) => (
+        <div className="modifiers" key={i}>
+          <div className="field-row">
+            <label>
+              Label
+              <input className="short" value={r.label ?? ''} onChange={(e) => upd(i, { label: e.target.value })} />
+            </label>
+            <label>
+              Bonus dice
+              <input className="short" placeholder="e.g. 2d6" value={r.bonusDice ?? ''} onChange={(e) => upd(i, { bonusDice: e.target.value || undefined })} />
+            </label>
+            <label>
+              + flat
+              <input className="num" type="number" placeholder="0" value={r.bonusFlat ?? ''} onChange={(e) => upd(i, { bonusFlat: e.target.value === '' ? undefined : +e.target.value })} />
+            </label>
+            <button className="danger mini" style={{ marginTop: '0.9rem' }} onClick={() => set(riders.filter((_, j) => j !== i))}>✕</button>
+          </div>
+          <div className="field-row">
+            <label>
+              Trigger
+              <select value={r.trigger} onChange={(e) => upd(i, { trigger: e.target.value as DamageRider['trigger'] })}>
+                {RIDER_TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+            {(r.trigger === 'targetHasCondition' || r.trigger === 'selfHasCondition') && (
+              <label>
+                Condition
+                <select value={r.condition ?? 'marked'} onChange={(e) => upd(i, { condition: e.target.value as ConditionKind })}>
+                  {COND_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+              <input type="checkbox" checked={r.oncePerTurn ?? false} onChange={(e) => upd(i, { oncePerTurn: e.target.checked })} />
+              once/turn
+            </label>
+            <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+              <input type="checkbox" checked={r.meleeOnly ?? false} onChange={(e) => upd(i, { meleeOnly: e.target.checked })} />
+              melee only
+            </label>
+          </div>
+        </div>
+      ))}
+      <div className="toolbar">
+        <button className="ghost mini" onClick={() => set([...riders, RIDER_PRESETS.sneak])}>+ Sneak Attack</button>
+        <button className="ghost mini" onClick={() => set([...riders, RIDER_PRESETS.rage])}>+ Rage</button>
+        <button className="ghost mini" onClick={() => set([...riders, RIDER_PRESETS.mark])}>+ Hunter's Mark</button>
+        <button className="ghost mini" onClick={() => set([...riders, { bonusDice: '1d6', trigger: 'always' }])}>+ Custom</button>
+      </div>
+    </div>
+  );
+}
 
 function ConditionEditor({ action, onChange }: { action: Action; onChange: (a: Action) => void }) {
   const apps = action.applyConditions ?? [];
@@ -201,10 +448,10 @@ function ConditionEditor({ action, onChange }: { action: Action; onChange: (a: A
   const setApps = (next: typeof apps) => onChange({ ...action, applyConditions: next.length ? next : undefined });
 
   return (
-    <div style={{ marginTop: '0.4rem' }}>
-      <div className="muted" style={{ fontSize: '0.75rem' }}>Conditions applied on hit / failed save:</div>
+    <div className="section">
+      <div className="section-title">Conditions applied on hit / failed save</div>
       {apps.map((app, i) => (
-        <div className="row" key={i} style={{ marginTop: '0.3rem' }}>
+        <div className="field-row" key={i}>
           <select
             value={app.kind}
             onChange={(e) => setApps(apps.map((a, j) => (j === i ? { ...a, kind: e.target.value as ConditionKind } : a)))}
@@ -237,12 +484,182 @@ function ConditionEditor({ action, onChange }: { action: Action; onChange: (a: A
               onChange={(e) => setApps(apps.map((a, j) => (j === i ? { ...a, duration: { type: 'rounds', rounds: +e.target.value } } : a)))}
             />
           )}
-          <button className="danger" onClick={() => setApps(apps.filter((_, j) => j !== i))}>✕</button>
+          <button className="danger mini" onClick={() => setApps(apps.filter((_, j) => j !== i))}>✕</button>
         </div>
       ))}
-      <button className="ghost" style={{ marginTop: '0.3rem' }} onClick={() => setApps([...apps, { kind: 'prone', duration: { type: 'rounds', rounds: 3 } }])}>
+      <button className="ghost mini" onClick={() => setApps([...apps, { kind: 'prone', duration: { type: 'rounds', rounds: 3 } }])}>
         + Add applied condition
       </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Weapons management
+// ---------------------------------------------------------------------------
+
+function WeaponsSection({ scenario, setScenario }: Props) {
+  const [open, setOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+
+  const add = () => {
+    const w: Weapon = { id: genId('wpn'), name: 'New Weapon', damage: '1d6', damageType: 'slashing', properties: [], category: 'martial' };
+    setScenario(upsertWeapon(scenario, w));
+    setEditId(w.id);
+    setOpen(true);
+  };
+
+  return (
+    <div className="panel">
+      <div className="row spread">
+        <h2>Weapons {open ? '' : `(${scenario.weapons.length})`}</h2>
+        <div className="row">
+          <button className="secondary mini" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Show'}</button>
+          {open && <button className="mini" onClick={add}>+ Add Weapon</button>}
+        </div>
+      </div>
+      {open && (
+        <>
+          <p className="help">Weapons supply the damage die, type, and properties (finesse, ranged, versatile…). Attack actions reference a weapon; the wielder's ability mod and proficiency are applied automatically.</p>
+          {scenario.weapons.map((w) => (
+            <div className="card" key={w.id} style={{ marginBottom: '0.5rem' }}>
+              <div className="row spread">
+                <div className="row">
+                  <strong>{w.name}</strong>
+                  <span className="tag">{w.damage}{w.versatileDamage ? `/${w.versatileDamage}` : ''} {w.damageType}</span>
+                  {w.properties.map((p) => <span className="tag" key={p}>{p}</span>)}
+                </div>
+                <div className="row">
+                  <button className="secondary mini" onClick={() => setEditId(editId === w.id ? null : w.id)}>{editId === w.id ? 'Collapse' : 'Edit'}</button>
+                  <button className="danger mini" onClick={() => setScenario(removeWeapon(scenario, w.id))}>Delete</button>
+                </div>
+              </div>
+              {editId === w.id && <WeaponEditor weapon={w} onChange={(n) => setScenario(upsertWeapon(scenario, n))} />}
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function WeaponEditor({ weapon, onChange }: { weapon: Weapon; onChange: (w: Weapon) => void }) {
+  const up = (patch: Partial<Weapon>) => onChange({ ...weapon, ...patch });
+  return (
+    <div style={{ marginTop: '0.5rem' }}>
+      <div className="field-row">
+        <label>Name<input value={weapon.name} onChange={(e) => up({ name: e.target.value })} /></label>
+        <label>Damage<input className="short" value={weapon.damage} onChange={(e) => up({ damage: e.target.value })} /></label>
+        <label>Versatile<input className="short" placeholder="—" value={weapon.versatileDamage ?? ''} onChange={(e) => up({ versatileDamage: e.target.value || undefined })} /></label>
+        <label>
+          Type
+          <select value={weapon.damageType} onChange={(e) => up({ damageType: e.target.value as DamageType })}>
+            {DAMAGE_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </label>
+        <label>
+          Category
+          <select value={weapon.category} onChange={(e) => up({ category: e.target.value as 'simple' | 'martial' })}>
+            <option value="simple">simple</option>
+            <option value="martial">martial</option>
+          </select>
+        </label>
+        <label>Range (ft)<input className="num" type="number" placeholder="0" value={weapon.range ?? ''} onChange={(e) => up({ range: e.target.value === '' ? undefined : +e.target.value })} /></label>
+        <label>Long range<input className="num" type="number" placeholder="—" value={weapon.longRange ?? ''} onChange={(e) => up({ longRange: e.target.value === '' ? undefined : +e.target.value })} /></label>
+      </div>
+      <div className="row">
+        {WEAPON_PROPS.map((p) => (
+          <label key={p} className="check-inline">
+            <input
+              type="checkbox"
+              checked={weapon.properties.includes(p)}
+              onChange={(e) => {
+                const set = new Set(weapon.properties);
+                if (e.target.checked) set.add(p);
+                else set.delete(p);
+                up({ properties: [...set] });
+              }}
+            />
+            {p}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reusable target lists
+// ---------------------------------------------------------------------------
+
+const LIST_FALLBACKS: { value: TargetStrategy; label: string }[] = [
+  { value: 'nearestEnemy', label: 'then nearest enemy' },
+  { value: 'lowestHpEnemy', label: 'then lowest-HP enemy' },
+  { value: 'nearestAlly', label: 'then nearest ally' },
+  { value: 'lowestHpAlly', label: 'then lowest-HP ally' },
+  { value: 'none', label: 'no fallback' },
+];
+
+function TargetListsSection({ scenario, setScenario }: Props) {
+  const [open, setOpen] = useState(false);
+
+  const add = () => {
+    const t: TargetList = { id: genId('tl'), name: 'New List', entries: [], fallback: 'nearestEnemy' };
+    setScenario(upsertTargetList(scenario, t));
+    setOpen(true);
+  };
+
+  return (
+    <div className="panel">
+      <div className="row spread">
+        <h2>Target Lists {open ? '' : `(${scenario.targetLists.length})`}</h2>
+        <div className="row">
+          <button className="secondary mini" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Show'}</button>
+          {open && <button className="mini" onClick={add}>+ Add List</button>}
+        </div>
+      </div>
+      {open && (
+        <>
+          <p className="help">
+            Reusable, explicit target priority lists referenced by rules (e.g. "enemy1 → enemy2 →
+            then nearest"). The combatant doesn't need omniscient knowledge — it works down the list,
+            then uses the fallback.
+          </p>
+          {scenario.targetLists.map((tl) => (
+            <div className="card" key={tl.id} style={{ marginBottom: '0.5rem' }}>
+              <div className="field-row">
+                <label>Name<input value={tl.name} onChange={(e) => setScenario(upsertTargetList(scenario, { ...tl, name: e.target.value }))} /></label>
+                <label>
+                  Fallback
+                  <select value={tl.fallback} onChange={(e) => setScenario(upsertTargetList(scenario, { ...tl, fallback: e.target.value as TargetStrategy }))}>
+                    {LIST_FALLBACKS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </label>
+                <button className="danger mini" style={{ marginTop: '0.9rem' }} onClick={() => setScenario(removeTargetList(scenario, tl.id))}>Delete</button>
+              </div>
+              <div className="muted" style={{ fontSize: '0.75rem' }}>Priority order (numbered as you check; uncheck to remove):</div>
+              <div className="row">
+                {scenario.combatants.map((c) => {
+                  const order = tl.entries.indexOf(c.id);
+                  return (
+                    <label key={c.id} className="check-inline" style={{ color: c.side === 'pc' ? 'var(--pc)' : 'var(--monster)' }}>
+                      <input
+                        type="checkbox"
+                        checked={order >= 0}
+                        onChange={(e) => {
+                          const entries = e.target.checked ? [...tl.entries, c.id] : tl.entries.filter((x) => x !== c.id);
+                          setScenario(upsertTargetList(scenario, { ...tl, entries }));
+                        }}
+                      />
+                      {order >= 0 ? `${order + 1}. ` : ''}{c.name}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

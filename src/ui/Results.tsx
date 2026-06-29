@@ -157,7 +157,16 @@ function SampleRunLog({ events, winner, rounds }: { events: LogEvent[]; winner: 
             <div key={round}>
               <div className="round-head">── Round {round} ──</div>
               {evs.map((e, i) => (
-                <div key={i} className={e.type === 'death' ? 'death' : e.type === 'heal' ? 'heal' : e.type === 'skip' ? 'skip' : ''}>
+                <div
+                  key={i}
+                  className={
+                    e.type === 'death' ? 'death'
+                    : e.type === 'heal' ? 'heal'
+                    : e.type === 'skip' ? 'skip'
+                    : e.type === 'move' ? 'move'
+                    : ''
+                  }
+                >
                   {e.message}
                 </div>
               ))}

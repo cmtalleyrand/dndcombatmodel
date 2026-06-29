@@ -5,7 +5,7 @@ export interface LogEvent {
   actorId: string;
   actorName: string;
   /** the action taken, or a meta-event like 'skip'. */
-  type: 'attack' | 'spell' | 'ability' | 'heal' | 'dodge' | 'skip' | 'condition' | 'death';
+  type: 'attack' | 'spell' | 'ability' | 'heal' | 'dodge' | 'skip' | 'condition' | 'death' | 'move';
   /** short human-readable description. */
   message: string;
   /** structured details for richer rendering / future stats. */

@@ -1,21 +1,29 @@
 // Resolve target selectors against the current combat state.
+//
+// Preferred model: an explicit ordered list of combatants (a reusable TargetList or
+// an inline `namedTargets`) with a computed `fallback` for any remaining slots — so
+// behaviour doesn't assume omniscient knowledge of the battlefield.
 
 import { isIncapacitated } from './conditions';
 import {
   alliesOf,
+  distance,
   enemiesOf,
   getState,
   isAlive,
   type CombatantState,
   type CombatState,
 } from './state';
-import type { TargetSelector } from './types';
+import type { TargetSelector, TargetStrategy } from './types';
 
 function eligible(c: CombatantState, excludeIncapacitated: boolean): boolean {
   if (!isAlive(c)) return false;
   if (excludeIncapacitated && isIncapacitated(c.conditions)) return false;
   return true;
 }
+
+/** Strategies that select a whole set regardless of count/explicit list. */
+const SET_STRATEGIES: TargetStrategy[] = ['allEnemies', 'allAllies', 'self'];
 
 /**
  * Resolve up to `count` targets for an actor given a selector. Returns an empty
@@ -28,59 +36,85 @@ export function resolveTargets(
   count: number,
 ): CombatantState[] {
   const excl = selector.excludeIncapacitated ?? false;
-  const enemies = enemiesOf(state, actor).filter((c) => eligible(c, excl));
-  const allies = alliesOf(state, actor).filter((c) => eligible(c, excl));
 
-  switch (selector.strategy) {
+  // Whole-set strategies (and no explicit list) return their set directly.
+  if (
+    SET_STRATEGIES.includes(selector.strategy) &&
+    !selector.listId &&
+    !(selector.namedTargets && selector.namedTargets.length)
+  ) {
+    return computeStrategy(state, actor, selector.strategy, count, excl, []);
+  }
+
+  // Resolve explicit entries + fallback (from a reusable list or inline).
+  let entries: string[] = [];
+  let fallback: TargetStrategy;
+  if (selector.listId && state.targetListsById[selector.listId]) {
+    const list = state.targetListsById[selector.listId];
+    entries = list.entries;
+    fallback = list.fallback;
+  } else {
+    entries = selector.namedTargets ?? actor.base.defaultTargets ?? [];
+    // back-compat: the legacy 'namedThenLowestHpEnemy' strategy implies a lowest-HP fallback.
+    fallback =
+      selector.fallback ??
+      (selector.strategy === 'namedThenLowestHpEnemy' ? 'lowestHpEnemy' : selector.strategy);
+  }
+
+  const result: CombatantState[] = [];
+  for (const id of entries) {
+    if (result.length >= count) break;
+    const c = getState(state, id);
+    if (c && eligible(c, excl) && !result.includes(c)) result.push(c);
+  }
+
+  if (result.length < count && fallback && fallback !== 'none') {
+    const more = computeStrategy(state, actor, fallback, count, excl, result);
+    for (const c of more) {
+      if (result.length >= count) break;
+      if (!result.includes(c)) result.push(c);
+    }
+  }
+
+  return result;
+}
+
+/** Compute a strategy's targets, excluding any already-chosen combatants. */
+function computeStrategy(
+  state: CombatState,
+  actor: CombatantState,
+  strategy: TargetStrategy,
+  count: number,
+  excl: boolean,
+  exclude: CombatantState[],
+): CombatantState[] {
+  const enemies = enemiesOf(state, actor).filter((c) => eligible(c, excl) && !exclude.includes(c));
+  // Healing should be able to target downed allies, so ally pools include the whole side.
+  const allies = alliesOf(state, actor).filter((c) => !exclude.includes(c));
+
+  switch (strategy) {
     case 'self':
       return isAlive(actor) ? [actor] : [];
-
     case 'allEnemies':
       return enemies;
-
     case 'allAllies':
-      return allies;
-
+      return allies.filter((c) => isAlive(c));
     case 'lowestHpEnemy':
-      return takeSorted(enemies, (a, b) => a.hp - b.hp, count);
-
+      return take(enemies, (a, b) => a.hp - b.hp, count);
     case 'highestHpEnemy':
-      return takeSorted(enemies, (a, b) => b.hp - a.hp, count);
-
-    case 'lowestHpAlly': {
-      // Healing should also be able to target downed allies (0 HP) to revive them,
-      // so this strategy includes all same-side combatants (alive or downed), lowest HP first.
-      return takeSorted(alliesOf(state, actor), (a, b) => a.hp - b.hp, count);
-    }
-
-    case 'namedThenLowestHpEnemy': {
-      const named = (selector.namedTargets ?? actor.base.defaultTargets ?? [])
-        .map((id) => getState(state, id))
-        .filter((c): c is CombatantState => !!c && eligible(c, excl));
-      const result: CombatantState[] = [];
-      for (const c of named) {
-        if (result.length >= count) break;
-        if (!result.includes(c)) result.push(c);
-      }
-      if (result.length < count) {
-        // fall back to lowest-HP enemies not already chosen
-        const remaining = enemies
-          .filter((e) => !result.includes(e))
-          .sort((a, b) => a.hp - b.hp);
-        for (const c of remaining) {
-          if (result.length >= count) break;
-          result.push(c);
-        }
-      }
-      return result;
-    }
-
+      return take(enemies, (a, b) => b.hp - a.hp, count);
+    case 'nearestEnemy':
+      return take(enemies, (a, b) => distance(actor, a) - distance(actor, b), count);
+    case 'lowestHpAlly':
+      return take(allies, (a, b) => a.hp - b.hp, count);
+    case 'nearestAlly':
+      return take(allies.filter((c) => isAlive(c)), (a, b) => distance(actor, a) - distance(actor, b), count);
     default:
       return [];
   }
 }
 
-function takeSorted(
+function take(
   list: CombatantState[],
   cmp: (a: CombatantState, b: CombatantState) => number,
   count: number,

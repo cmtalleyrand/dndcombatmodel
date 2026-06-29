@@ -1,4 +1,5 @@
 import type { Scenario } from '../engine/types';
+import { Battlefield } from './Battlefield';
 
 interface Props {
   scenario: Scenario;
@@ -27,6 +28,8 @@ export function InitiativeTab({ scenario, setScenario }: Props) {
   };
 
   return (
+   <div>
+    <Battlefield scenario={scenario} />
     <div className="panel">
       <h2>Initiative</h2>
       <div className="row" style={{ marginBottom: '0.75rem' }}>
@@ -87,5 +90,6 @@ export function InitiativeTab({ scenario, setScenario }: Props) {
         })}
       </ol>
     </div>
+   </div>
   );
 }

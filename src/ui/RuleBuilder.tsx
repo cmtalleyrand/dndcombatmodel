@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type {
   Combatant,
   ConditionKind,
@@ -5,8 +6,10 @@ import type {
   RuleCondition,
   RuleConditionType,
   Scenario,
+  ScriptPreset,
   TargetStrategy,
 } from '../engine/types';
+import { deletePreset, loadPresets, savePreset } from '../state/store';
 
 interface Props {
   combatant: Combatant;
@@ -25,22 +28,34 @@ const CONDITION_TYPES: { value: RuleConditionType; label: string; needs: 'none' 
   { value: 'roundAtLeast', label: 'Round ≥', needs: 'value' },
   { value: 'roundAtMost', label: 'Round ≤', needs: 'value' },
   { value: 'notConcentrating', label: 'Not concentrating', needs: 'none' },
+  { value: 'anyEnemyConcentrating', label: 'An enemy is concentrating', needs: 'none' },
   { value: 'slotAvailable', label: "Spell slot available (for this action's level)", needs: 'none' },
 ];
 
 const TARGET_STRATEGIES: { value: TargetStrategy; label: string }[] = [
+  { value: 'nearestEnemy', label: 'Nearest enemy' },
   { value: 'lowestHpEnemy', label: 'Lowest-HP enemy' },
   { value: 'highestHpEnemy', label: 'Highest-HP enemy' },
-  { value: 'namedThenLowestHpEnemy', label: 'Named priority list → lowest-HP enemy' },
+  { value: 'none', label: 'Explicit list / target list (below)' },
   { value: 'allEnemies', label: 'All enemies (AoE)' },
+  { value: 'nearestAlly', label: 'Nearest ally (incl. self)' },
   { value: 'lowestHpAlly', label: 'Lowest-HP ally (incl. self)' },
   { value: 'allAllies', label: 'All allies (incl. self)' },
   { value: 'self', label: 'Self' },
 ];
 
+/** Fallback strategies offered for explicit lists. */
+const FALLBACK_STRATEGIES: { value: TargetStrategy; label: string }[] = [
+  { value: 'nearestEnemy', label: 'then nearest enemy' },
+  { value: 'lowestHpEnemy', label: 'then lowest-HP enemy' },
+  { value: 'nearestAlly', label: 'then nearest ally' },
+  { value: 'lowestHpAlly', label: 'then lowest-HP ally' },
+  { value: 'none', label: 'no fallback' },
+];
+
 const CONDITION_KINDS: ConditionKind[] = [
   'prone', 'poisoned', 'asleep', 'unconscious', 'blinded', 'restrained',
-  'stunned', 'paralyzed', 'frightened', 'blessed', 'dodging',
+  'stunned', 'paralyzed', 'frightened', 'blessed', 'dodging', 'raging', 'marked',
 ];
 
 export function RuleBuilder({ combatant, scenario, onChange }: Props) {
@@ -68,6 +83,12 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
 
   const remove = (idx: number) => onChange(renumber(rules.filter((_, i) => i !== idx)));
 
+  const duplicate = (idx: number) => {
+    const next = [...rules];
+    next.splice(idx + 1, 0, { ...rules[idx] });
+    onChange(renumber(next));
+  };
+
   const move = (idx: number, dir: -1 | 1) => {
     const j = idx + dir;
     if (j < 0 || j >= rules.length) return;
@@ -82,6 +103,7 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
 
   return (
     <div>
+      <PresetBar rules={rules} onApply={(r) => onChange(renumber([...rules, ...r]))} />
       {rules.map((rule, idx) => {
         const condMeta = CONDITION_TYPES.find((c) => c.value === rule.condition.type)!;
         return (
@@ -89,9 +111,10 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
             <div className="row spread">
               <strong>Priority {rule.priority}</strong>
               <div className="row">
-                <button className="ghost" onClick={() => move(idx, -1)} disabled={idx === 0}>↑</button>
-                <button className="ghost" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1}>↓</button>
-                <button className="danger" onClick={() => remove(idx)}>✕</button>
+                <button className="ghost mini" onClick={() => move(idx, -1)} disabled={idx === 0}>↑</button>
+                <button className="ghost mini" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1}>↓</button>
+                <button className="secondary mini" onClick={() => duplicate(idx)}>⧉ Duplicate</button>
+                <button className="danger mini" onClick={() => remove(idx)}>✕</button>
               </div>
             </div>
 
@@ -179,30 +202,59 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
               </label>
             </div>
 
-            {rule.target.strategy === 'namedThenLowestHpEnemy' && (
-              <div style={{ marginTop: '0.4rem' }}>
-                <div className="muted" style={{ fontSize: '0.75rem' }}>Named priority order (checked = in list):</div>
-                <div className="row">
-                  {enemies.map((en) => {
-                    const list = rule.target.namedTargets ?? [];
-                    const checked = list.includes(en.id);
-                    return (
-                      <label key={en.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const set = e.target.checked
-                              ? [...list, en.id]
-                              : list.filter((x) => x !== en.id);
-                            setRule(idx, { target: { ...rule.target, namedTargets: set } });
-                          }}
-                        />
-                        {en.name}
-                      </label>
-                    );
-                  })}
+            {(rule.target.strategy === 'none' || rule.target.strategy === 'namedThenLowestHpEnemy') && (
+              <div className="modifiers" style={{ marginTop: '0.4rem' }}>
+                <div className="field-row">
+                  <label>
+                    Reusable target list
+                    <select
+                      value={rule.target.listId ?? ''}
+                      onChange={(e) => setRule(idx, { target: { ...rule.target, listId: e.target.value || undefined } })}
+                    >
+                      <option value="">— inline list below —</option>
+                      {scenario.targetLists.map((tl) => (
+                        <option key={tl.id} value={tl.id}>{tl.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {!rule.target.listId && (
+                    <label>
+                      Fallback
+                      <select
+                        value={rule.target.fallback ?? 'nearestEnemy'}
+                        onChange={(e) => setRule(idx, { target: { ...rule.target, fallback: e.target.value as TargetStrategy } })}
+                      >
+                        {FALLBACK_STRATEGIES.map((f) => (
+                          <option key={f.value} value={f.value}>{f.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                 </div>
+                {!rule.target.listId && (
+                  <>
+                    <div className="muted" style={{ fontSize: '0.75rem' }}>Explicit priority order (check to include; order follows the roster):</div>
+                    <div className="row">
+                      {enemies.map((en) => {
+                        const list = rule.target.namedTargets ?? [];
+                        const checked = list.includes(en.id);
+                        return (
+                          <label key={en.id} className="check-inline">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                const set = e.target.checked ? [...list, en.id] : list.filter((x) => x !== en.id);
+                                setRule(idx, { target: { ...rule.target, namedTargets: set } });
+                              }}
+                            />
+                            {en.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -217,6 +269,52 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
       })}
 
       <button className="secondary" onClick={addRule}>+ Add rule</button>
+    </div>
+  );
+}
+
+/** Save the current script as a named preset, or append a saved preset's rules. */
+function PresetBar({ rules, onApply }: { rules: Rule[]; onApply: (rules: Rule[]) => void }) {
+  const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
+
+  const save = () => {
+    const name = window.prompt('Save this script as a reusable preset named:');
+    if (!name) return;
+    setPresets(savePreset(name, rules));
+  };
+
+  return (
+    <div className="toolbar">
+      <button className="secondary mini" onClick={save} disabled={rules.length === 0}>
+        💾 Save script as preset
+      </button>
+      <span className="muted" style={{ fontSize: '0.78rem' }}>Apply preset:</span>
+      <select
+        value=""
+        onChange={(e) => {
+          const p = presets.find((x) => x.id === e.target.value);
+          if (p) onApply(p.rules.map((r) => ({ ...r })));
+        }}
+        disabled={presets.length === 0}
+      >
+        <option value="">{presets.length ? '— choose —' : '(none saved)'}</option>
+        {presets.map((p) => (
+          <option key={p.id} value={p.id}>{p.name} ({p.rules.length})</option>
+        ))}
+      </select>
+      {presets.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) setPresets(deletePreset(e.target.value));
+          }}
+        >
+          <option value="">🗑 delete preset…</option>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }

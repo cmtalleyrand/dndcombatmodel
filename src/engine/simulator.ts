@@ -126,6 +126,10 @@ export function runSimulation(scenario: Scenario, seed: number): RunResult {
       if (!actor) continue;
       if (!isAlive(actor)) continue;
 
+      // Reset per-turn movement budget and once-per-turn rider usage.
+      actor.movedThisTurn = 0;
+      actor.riderUsedThisTurn.clear();
+
       // Conditions tick at the start of the bearer's turn: durations applied during
       // other combatants' turns (e.g. Dodge, Sleep) last a full round before resolving.
       tickConditions(state, actor, rng, events);
