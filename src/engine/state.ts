@@ -8,6 +8,7 @@ import type {
   ConditionInstance,
   Scenario,
   SpellSlots,
+  Weapon,
 } from './types';
 import { combineAdvantage, type Advantage } from './dice';
 
@@ -39,6 +40,7 @@ export interface CombatState {
   order: string[];
   round: number;
   actionsById: Record<string, Action>;
+  weaponsById: Record<string, Weapon>;
 }
 
 export function initCombatantState(c: Combatant): CombatantState {
@@ -59,11 +61,14 @@ export function initCombatantState(c: Combatant): CombatantState {
 export function buildCombatState(scenario: Scenario): CombatState {
   const actionsById: Record<string, Action> = {};
   for (const a of scenario.actions) actionsById[a.id] = a;
+  const weaponsById: Record<string, Weapon> = {};
+  for (const w of scenario.weapons ?? []) weaponsById[w.id] = w;
   return {
     combatants: scenario.combatants.map(initCombatantState),
     order: [],
     round: 0,
     actionsById,
+    weaponsById,
   };
 }
 

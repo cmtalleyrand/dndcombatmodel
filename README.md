@@ -13,10 +13,18 @@ deployed as a static site to GitHub Pages.
 ## Features
 
 - **Combatants:** HP, AC, six ability scores, saving-throw proficiencies, proficiency
-  bonus, and spell slots for up to 4 PCs and 8 monsters.
-- **Reusable action library:** attacks (with multiattack), spells, and abilities with
-  to-hit/damage, save-for-half, healing, applied conditions, spell-slot cost,
-  concentration, and limited uses. Define once, reuse across combatants.
+  bonus, a spellcasting ability, and spell slots for up to 4 PCs and 8 monsters.
+- **Character-derived actions:** weapon attacks pick a weapon from a library and the
+  to-hit (STR or DEX via finesse/ranged + proficiency) and damage (weapon die + ability
+  mod) are computed automatically; spells derive their attack bonus and save DC from the
+  caster's spellcasting ability. Optional additive **modifiers** layer on top — `+to hit`,
+  `+damage`, bonus damage dice, a magic `+N` (hit & damage), and `+save DC`. The editor
+  shows the derived result live (e.g. `+5 to hit, 1d8+3 slashing (STR)`). Legacy explicit
+  numbers still work for fully-manual actions and imported v1 scenarios.
+- **Reusable libraries:** an action library (attacks/spells/abilities) and a weapon
+  library, both editable. **Duplicate** any action or weapon to make an edited variant.
+- **Script reuse:** duplicate a single rule, **copy a whole script** from another
+  combatant, or **save/apply named script presets** (stored in your browser).
 - **Priority scripts:** each combatant runs an ordered list of rules. The first rule
   whose *condition* passes and whose action is *available* (slot left, legal target)
   fires. Conditions include: always, self/ally HP below %, living-enemy count,
@@ -38,10 +46,11 @@ deployed as a static site to GitHub Pages.
 
 ## What the simulator does *not* model yet
 
-Reactions (opportunity attacks, Shield, Counterspell), real movement/positioning and
-area geometry, combining a move with an action in the same turn, and finer rules edge
-cases (legendary actions, full resistance/immunity matrices, death saves). These are
-intentionally deferred — see the in-app notes and the plan.
+Reactions (opportunity attacks, Shield, Counterspell), conditional feature riders
+(once-per-turn sneak attack, rage, hunter's mark — only static/auto bonuses are modelled
+for now), real movement/positioning and area geometry, combining a move with an action in
+the same turn, and finer rules edge cases (legendary actions, full resistance/immunity
+matrices, death saves). These are intentionally deferred — see the in-app notes and the plan.
 
 ## Getting started
 

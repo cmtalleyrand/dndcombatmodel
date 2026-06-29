@@ -2,6 +2,12 @@
 
 import { CONDITION_CATALOG } from './conditions';
 import { rollD20, rollDice, type RNG, type Advantage, combineAdvantage } from './dice';
+import {
+  resolveAttackProfile,
+  spellAttackBonus,
+  spellSaveDC,
+  healFlat,
+} from './derive';
 import type { LogEvent } from './log';
 import {
   abilityMod,
@@ -140,6 +146,15 @@ function critDouble(formula: string): string {
   return `${count}d${m[2]}${m[3] ?? ''}`;
 }
 
+/** Roll a damage profile: each die formula (doubled on crit) plus a flat bonus (never doubled). */
+function rollDamageTotal(rng: RNG, dice: string[], flat: number, crit: boolean): number {
+  let total = flat;
+  for (const d of dice) {
+    total += rollDice(rng, crit ? critDouble(d) : d).total;
+  }
+  return Math.max(0, total);
+}
+
 /** Begin concentrating on an action, dropping any prior concentration. */
 function startConcentration(
   state: CombatState,
@@ -227,14 +242,15 @@ function resolveAttack(
   events: LogEvent[],
 ): void {
   const attackCount = action.attackCount ?? 1;
-  const bonus = action.attackBonus ?? 0;
+  const weapon = action.weaponId ? state.weaponsById[action.weaponId] : undefined;
+  const profile = resolveAttackProfile(actor.base, action, weapon);
   const { bless } = blessAdvantageBonus(actor);
 
   for (const target of targets) {
     for (let i = 0; i < attackCount; i++) {
       if (!isAlive(target)) break;
       const adv = combineAdvantage(attackAdvantage(actor), targetAdvantage(target));
-      let toHit = bonus;
+      let toHit = profile.toHit;
       let blessNote = '';
       if (bless) {
         const b = rollDice(rng, BLESS_BONUS).total;
@@ -258,11 +274,7 @@ function resolveAttack(
         continue;
       }
 
-      let dmg = 0;
-      if (action.damage) {
-        const formula = roll.isCrit ? critDouble(action.damage) : action.damage;
-        dmg = Math.max(0, rollDice(rng, formula).total);
-      }
+      const dmg = rollDamageTotal(rng, profile.damageDice, profile.damageFlat, roll.isCrit);
       applyDamage(state, rng, actor, target, dmg, events);
       events.push({
         round: state.round,
@@ -294,8 +306,9 @@ function resolveSpellOrAbility(
 ): void {
   // Healing
   if (action.heal) {
+    const flat = healFlat(actor.base, action);
     for (const target of targets) {
-      const healAmt = rollDice(rng, action.heal).total;
+      const healAmt = rollDice(rng, action.heal).total + flat;
       const before = target.hp;
       // healing a downed PC brings them back up
       target.down = false;
@@ -317,16 +330,20 @@ function resolveSpellOrAbility(
     return;
   }
 
-  // Attack-roll spell (e.g. fire bolt, magic missile auto-hit handled via no save & no attackBonus)
   const { bless } = blessAdvantageBonus(actor);
+  // Spell damage parts derive from the action's formula + adjustments (no ability mod).
+  const dmgProfile = resolveAttackProfile(actor.base, action, undefined);
+  // Whether this spell uses an attack roll (explicit flag, or legacy: had an attackBonus).
+  const usesSpellAttack = action.spellAttack === true || (action.attackBonus !== undefined && !action.save);
 
   for (const target of targets) {
     if (!isAlive(target)) continue;
 
     if (action.save) {
-      // Saving-throw effect.
+      // Saving-throw effect with a derived DC.
       const meta = CONDITION_CATALOG;
       const ability = action.save.ability;
+      const dc = spellSaveDC(actor.base, action);
       const autoFail = target.conditions.some((c) =>
         meta[c.kind].autoFailSaves?.includes(ability),
       );
@@ -340,12 +357,12 @@ function resolveSpellOrAbility(
         const adv = saveAdvantage(target, ability);
         const roll = rollD20(rng, sb, adv);
         saveTotal = roll.total;
-        saved = roll.total >= action.save.dc;
+        saved = roll.total >= dc;
       }
 
       let dmg = 0;
       if (action.damage) {
-        dmg = rollDice(rng, action.damage).total;
+        dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, false);
         if (saved) dmg = action.save.onSuccess === 'half' ? Math.floor(dmg / 2) : 0;
         applyDamage(state, rng, actor, target, dmg, events);
       }
@@ -362,20 +379,19 @@ function resolveSpellOrAbility(
         targetName: target.base.name,
         damage: dmg,
         message: `${actor.base.name} uses ${action.name} on ${target.base.name}: ${
-          autoFail ? 'auto-fails' : `saves ${saveTotal} vs DC ${action.save.dc} — ${saved ? 'success' : 'fail'}`
+          autoFail ? 'auto-fails' : `saves ${saveTotal} vs DC ${dc} — ${saved ? 'success' : 'fail'}`
         }${action.damage ? `, ${dmg} damage (now ${target.hp} HP)` : ''}.`,
       });
-    } else if (action.attackBonus !== undefined) {
-      // Spell attack roll.
+    } else if (usesSpellAttack) {
+      // Spell attack roll with a derived attack bonus.
       const adv = combineAdvantage(attackAdvantage(actor), targetAdvantage(target));
-      let toHit = action.attackBonus;
+      let toHit = action.attackBonus ?? spellAttackBonus(actor.base, action);
       if (bless) toHit += rollDice(rng, BLESS_BONUS).total;
       const roll = rollD20(rng, toHit, adv);
       const hit = roll.isCrit || (!roll.isCritMiss && roll.total >= target.base.ac);
       let dmg = 0;
-      if (hit && action.damage) {
-        const formula = roll.isCrit ? critDouble(action.damage) : action.damage;
-        dmg = rollDice(rng, formula).total;
+      if (hit) {
+        dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, roll.isCrit);
         applyDamage(state, rng, actor, target, dmg, events);
         if (action.applyConditions?.length) {
           applyConditionsTo(target, actor, action.applyConditions, state, events);
@@ -398,7 +414,7 @@ function resolveSpellOrAbility(
       // Auto-hit damage (e.g. magic missile) or pure condition application.
       let dmg = 0;
       if (action.damage) {
-        dmg = rollDice(rng, action.damage).total;
+        dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, false);
         applyDamage(state, rng, actor, target, dmg, events);
       }
       if (action.applyConditions?.length) {

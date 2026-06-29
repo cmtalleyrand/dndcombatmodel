@@ -2,6 +2,7 @@
 // and a default scenario that demonstrates scripting (priorities, conditions, targets).
 
 import type { Action, Combatant, Scenario } from '../engine/types';
+import { SRD_WEAPONS } from './weapons';
 
 // ---------------------------------------------------------------------------
 // Action library
@@ -26,35 +27,30 @@ export const ACTION_MOVE: Action = {
 export const SRD_ACTIONS: Action[] = [
   ACTION_DODGE,
   ACTION_MOVE,
+  // --- weapon attacks (to-hit & damage derive from the wielder + weapon) ---
   {
     id: 'act-mace',
     name: 'Mace',
     kind: 'attack',
     targets: 1,
-    attackBonus: 4,
+    weaponId: 'wpn-mace',
     attackCount: 1,
-    damage: '1d6+2',
-    damageType: 'bludgeoning',
   },
   {
     id: 'act-longsword',
     name: 'Longsword',
     kind: 'attack',
     targets: 1,
-    attackBonus: 5,
+    weaponId: 'wpn-longsword',
     attackCount: 1,
-    damage: '1d8+3',
-    damageType: 'slashing',
   },
   {
     id: 'act-longsword-2x',
     name: 'Longsword (Extra Attack)',
     kind: 'attack',
     targets: 1,
-    attackBonus: 5,
+    weaponId: 'wpn-longsword',
     attackCount: 2,
-    damage: '1d8+3',
-    damageType: 'slashing',
     note: 'Two longsword attacks against one target (Extra Attack).',
   },
   {
@@ -62,30 +58,27 @@ export const SRD_ACTIONS: Action[] = [
     name: 'Shortbow',
     kind: 'attack',
     targets: 1,
-    attackBonus: 5,
+    weaponId: 'wpn-shortbow',
     attackCount: 1,
-    damage: '1d6+3',
-    damageType: 'piercing',
   },
   {
     id: 'act-scimitar',
     name: 'Scimitar',
     kind: 'attack',
     targets: 1,
-    attackBonus: 4,
+    weaponId: 'wpn-scimitar',
     attackCount: 1,
-    damage: '1d6+2',
-    damageType: 'slashing',
   },
-  // --- spells ---
+  // --- spells (attack/DC derive from the caster's spellcasting ability) ---
   {
     id: 'act-cure-wounds',
     name: 'Cure Wounds (L1)',
     kind: 'spell',
     targets: 1,
     spellLevel: 1,
-    heal: '1d8+3',
-    note: 'Heal a single ally (lowest HP by default).',
+    heal: '1d8',
+    addSpellModToHeal: true,
+    note: 'Heal a single ally for 1d8 + spellcasting modifier.',
   },
   {
     id: 'act-bless',
@@ -103,7 +96,7 @@ export const SRD_ACTIONS: Action[] = [
     kind: 'spell',
     targets: 3,
     spellLevel: 1,
-    save: { ability: 'wis', dc: 13, onSuccess: 'none' },
+    save: { ability: 'wis', onSuccess: 'none' }, // DC derived from the caster
     applyConditions: [{ kind: 'asleep', duration: { type: 'rounds', rounds: 10 } }],
     note: 'Targets fall asleep on a failed save (abstracted; wakes when damaged).',
   },
@@ -122,10 +115,10 @@ export const SRD_ACTIONS: Action[] = [
     name: 'Fire Bolt (cantrip)',
     kind: 'spell',
     targets: 1,
-    attackBonus: 6,
+    spellAttack: true,
     damage: '1d10',
     damageType: 'fire',
-    note: 'Cantrip spell attack — no slot cost.',
+    note: 'Cantrip spell attack (attack bonus derived) — no slot cost.',
   },
 ];
 
@@ -143,6 +136,7 @@ export const SAMPLE_PCS: Combatant[] = [
     abilityScores: { str: 14, dex: 10, con: 14, int: 10, wis: 16, cha: 12 },
     saveProficiencies: ['wis', 'cha'],
     proficiencyBonus: 2,
+    spellcastingAbility: 'wis',
     actionIds: ['act-cure-wounds', 'act-bless', 'act-mace'],
     spellSlots: { 1: 4 },
     script: [
@@ -199,6 +193,7 @@ export const SAMPLE_PCS: Combatant[] = [
     abilityScores: { str: 8, dex: 14, con: 13, int: 16, wis: 11, cha: 10 },
     saveProficiencies: ['int', 'wis'],
     proficiencyBonus: 2,
+    spellcastingAbility: 'int',
     actionIds: ['act-sleep', 'act-magic-missile', 'act-fire-bolt'],
     spellSlots: { 1: 4 },
     script: [
@@ -320,6 +315,7 @@ export function defaultScenario(): Scenario {
     name: 'Party of 4 vs 3 Goblins & 2 Orcs',
     combatants: [...pcs, ...monsters],
     actions: SRD_ACTIONS,
+    weapons: SRD_WEAPONS,
     initiativeMode: 'rolled',
     maxRounds: 30,
   };

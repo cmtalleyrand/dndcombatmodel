@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ABILITIES, type Ability, type Combatant, type Scenario, type Side } from '../engine/types';
-import { genId, removeCombatant, upsertCombatant } from '../state/store';
+import { copyScript, genId, removeCombatant, upsertCombatant } from '../state/store';
 import { RuleBuilder } from './RuleBuilder';
+import { describeAction } from './describe';
 
 interface Props {
   side: Side;
@@ -86,6 +87,14 @@ function CombatantCard({
     setScenario(upsertCombatant(scenario, { ...combatant, ...patch }));
 
   const validation = validateCombatant(combatant, scenario);
+  const weaponsById = useMemo(() => {
+    const m: Record<string, (typeof scenario.weapons)[number]> = {};
+    for (const w of scenario.weapons) m[w.id] = w;
+    return m;
+  }, [scenario.weapons]);
+  const otherSameSide = scenario.combatants.filter(
+    (c) => c.side === combatant.side && c.id !== combatant.id,
+  );
 
   return (
     <div className={`card ${combatant.side}`}>
@@ -154,6 +163,20 @@ function CombatantCard({
                 onChange={(e) => update({ proficiencyBonus: +e.target.value })}
               />
             </label>
+            <label>
+              Spellcasting
+              <select
+                value={combatant.spellcastingAbility ?? ''}
+                onChange={(e) =>
+                  update({ spellcastingAbility: (e.target.value || undefined) as Ability | undefined })
+                }
+              >
+                <option value="">— none —</option>
+                {ABILITIES.map((ab) => (
+                  <option key={ab} value={ab}>{ab.toUpperCase()}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <h3 style={{ marginTop: '0.5rem' }}>Ability Scores</h3>
@@ -214,30 +237,60 @@ function CombatantCard({
             ))}
           </div>
 
-          <h3 style={{ marginTop: '0.75rem' }}>Available Actions</h3>
-          <p className="help">Pick which library actions this combatant can use in its script.</p>
-          <div className="row">
+          <div className="section">
+            <div className="section-title">Available Actions</div>
+            <p className="help">
+              Pick which library actions this combatant can use. The derived to-hit / damage / save
+              DC shown are computed from this combatant's ability scores, proficiency, and the chosen
+              weapon or spellcasting ability.
+            </p>
             {scenario.actions
               .filter((a) => a.kind !== 'dodge' && a.kind !== 'move')
-              .map((a) => (
-                <label key={a.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={combatant.actionIds.includes(a.id)}
-                    onChange={(e) => {
-                      const set = new Set(combatant.actionIds);
-                      if (e.target.checked) set.add(a.id);
-                      else set.delete(a.id);
-                      update({ actionIds: [...set] });
-                    }}
-                  />
-                  {a.name}
-                </label>
-              ))}
+              .map((a) => {
+                const checked = combatant.actionIds.includes(a.id);
+                return (
+                  <div className="action-line" key={a.id}>
+                    <label className="check-inline">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const set = new Set(combatant.actionIds);
+                          if (e.target.checked) set.add(a.id);
+                          else set.delete(a.id);
+                          update({ actionIds: [...set] });
+                        }}
+                      />
+                      {a.name}
+                    </label>
+                    {checked && (
+                      <span className="derived">{describeAction(combatant, a, weaponsById)}</span>
+                    )}
+                  </div>
+                );
+              })}
           </div>
 
-          <h3 style={{ marginTop: '0.75rem' }}>Priority Script</h3>
-          <RuleBuilder combatant={combatant} scenario={scenario} onChange={(script) => update({ script })} />
+          <div className="section">
+            <div className="section-title">Priority Script</div>
+            {otherSameSide.length > 0 && (
+              <div className="toolbar">
+                <span className="muted" style={{ fontSize: '0.78rem' }}>Copy script from:</span>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) setScenario(copyScript(scenario, e.target.value, combatant.id));
+                  }}
+                >
+                  <option value="">— choose —</option>
+                  {otherSameSide.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <RuleBuilder combatant={combatant} scenario={scenario} onChange={(script) => update({ script })} />
+          </div>
         </div>
       )}
     </div>

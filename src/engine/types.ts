@@ -60,9 +60,35 @@ export type ActionKind = 'attack' | 'spell' | 'ability' | 'dodge' | 'move';
 /** How targets are resolved for a save-based effect. */
 export interface SaveSpec {
   ability: Ability;
-  dc: number;
+  /** Explicit DC. If omitted, the DC is derived (8 + spellcasting mod + proficiency). */
+  dc?: number;
   /** On a successful save: take half damage, no effect, or no condition. */
   onSuccess: 'half' | 'none';
+}
+
+// ---------------------------------------------------------------------------
+// Weapons (referenced by attack actions; values derive from the wielder)
+// ---------------------------------------------------------------------------
+
+export type WeaponProperty =
+  | 'finesse'
+  | 'ranged'
+  | 'versatile'
+  | 'twoHanded'
+  | 'light'
+  | 'heavy'
+  | 'thrown';
+
+export interface Weapon {
+  id: string;
+  name: string;
+  /** one-handed damage die, e.g. "1d8". */
+  damage: string;
+  /** two-handed damage die for versatile weapons, e.g. "1d10". */
+  versatileDamage?: string;
+  damageType: DamageType;
+  properties: WeaponProperty[];
+  category: 'simple' | 'martial';
 }
 
 /** A condition to apply to a target as part of an action's effect. */
@@ -82,20 +108,48 @@ export interface Action {
   /** Number of distinct targets this action affects (1 for single target). */
   targets: number;
 
-  // --- attack / attack-roll spell ---
-  /** to-hit bonus for an attack roll. If undefined and there's a save, it's save-based. */
+  // --- weapon-based attack (preferred): numbers derive from the wielder ---
+  /** weapon from the library; to-hit & damage derive from the wielder + this weapon. */
+  weaponId?: string;
+  /** use the two-handed (versatile) damage die. */
+  useVersatile?: boolean;
+  /** force a specific ability for the attack instead of the auto choice. */
+  abilityOverride?: Ability;
+  /** wielder is NOT proficient with this weapon (omit proficiency bonus). */
+  notProficient?: boolean;
+
+  // --- legacy / manual attack (back-compat escape hatch) ---
+  /** explicit to-hit bonus. If a weaponId is set, this is ignored in favor of derivation. */
   attackBonus?: number;
   /** number of separate attack rolls (e.g. multiattack / two attacks). */
   attackCount?: number;
-  /** damage dice formula, e.g. "1d8+3". */
+  /** explicit damage formula, e.g. "1d8+3". Used when no weaponId is set. */
   damage?: string;
   damageType?: DamageType;
 
+  // --- additive adjustments (layered on top of derived values) ---
+  /** +N to hit (fighting style, feat). */
+  toHitBonus?: number;
+  /** +N flat damage (rage, dueling). */
+  damageBonus?: number;
+  /** extra damage dice rolled on a hit, e.g. "1d6" (smite, elemental). */
+  bonusDamageDice?: string;
+  /** magic weapon/focus bonus added to BOTH attack and damage, e.g. +1. */
+  magicBonus?: number;
+
+  // --- spell delivery ---
+  /** true if this spell uses a spell attack roll (e.g. Fire Bolt). Otherwise auto-hits or uses a save. */
+  spellAttack?: boolean;
+
   // --- save-based effect ---
   save?: SaveSpec;
+  /** +N to a derived save DC. */
+  saveDcBonus?: number;
 
   // --- healing ---
-  heal?: string; // dice formula, e.g. "1d8+3"
+  heal?: string; // dice formula, e.g. "1d8"
+  /** add the caster's spellcasting modifier to the heal (e.g. Cure Wounds = 1d8 + mod). */
+  addSpellModToHeal?: boolean;
 
   // --- conditions applied on hit / failed save ---
   applyConditions?: ConditionApplication[];
@@ -186,8 +240,10 @@ export interface Combatant {
   abilityScores: AbilityScores;
   /** abilities the combatant is proficient in for saving throws. */
   saveProficiencies: Ability[];
-  /** proficiency bonus (used for saves & default attack math if needed). */
+  /** proficiency bonus (used for saves, weapon attacks, and spell DCs). */
   proficiencyBonus: number;
+  /** spellcasting ability for derived spell attack bonus and save DC. */
+  spellcastingAbility?: Ability;
   /** action ids available to this combatant (from the action library). */
   actionIds: string[];
   /** ordered priority script. */
@@ -209,9 +265,21 @@ export interface Scenario {
   combatants: Combatant[];
   /** shared library of actions referenced by combatants. */
   actions: Action[];
+  /** shared library of weapons referenced by attack actions. */
+  weapons: Weapon[];
   initiativeMode: InitiativeMode;
   /** for fixed initiative: ordered combatant ids (first acts first). */
   fixedOrder?: string[];
   /** max rounds before declaring a draw. */
   maxRounds: number;
+}
+
+// ---------------------------------------------------------------------------
+// Reusable script presets (stored in localStorage, not in a scenario)
+// ---------------------------------------------------------------------------
+
+export interface ScriptPreset {
+  id: string;
+  name: string;
+  rules: Rule[];
 }

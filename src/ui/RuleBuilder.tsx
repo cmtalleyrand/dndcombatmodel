@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type {
   Combatant,
   ConditionKind,
@@ -5,8 +6,10 @@ import type {
   RuleCondition,
   RuleConditionType,
   Scenario,
+  ScriptPreset,
   TargetStrategy,
 } from '../engine/types';
+import { deletePreset, loadPresets, savePreset } from '../state/store';
 
 interface Props {
   combatant: Combatant;
@@ -68,6 +71,12 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
 
   const remove = (idx: number) => onChange(renumber(rules.filter((_, i) => i !== idx)));
 
+  const duplicate = (idx: number) => {
+    const next = [...rules];
+    next.splice(idx + 1, 0, { ...rules[idx] });
+    onChange(renumber(next));
+  };
+
   const move = (idx: number, dir: -1 | 1) => {
     const j = idx + dir;
     if (j < 0 || j >= rules.length) return;
@@ -82,6 +91,7 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
 
   return (
     <div>
+      <PresetBar rules={rules} onApply={(r) => onChange(renumber([...rules, ...r]))} />
       {rules.map((rule, idx) => {
         const condMeta = CONDITION_TYPES.find((c) => c.value === rule.condition.type)!;
         return (
@@ -89,9 +99,10 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
             <div className="row spread">
               <strong>Priority {rule.priority}</strong>
               <div className="row">
-                <button className="ghost" onClick={() => move(idx, -1)} disabled={idx === 0}>↑</button>
-                <button className="ghost" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1}>↓</button>
-                <button className="danger" onClick={() => remove(idx)}>✕</button>
+                <button className="ghost mini" onClick={() => move(idx, -1)} disabled={idx === 0}>↑</button>
+                <button className="ghost mini" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1}>↓</button>
+                <button className="secondary mini" onClick={() => duplicate(idx)}>⧉ Duplicate</button>
+                <button className="danger mini" onClick={() => remove(idx)}>✕</button>
               </div>
             </div>
 
@@ -217,6 +228,52 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
       })}
 
       <button className="secondary" onClick={addRule}>+ Add rule</button>
+    </div>
+  );
+}
+
+/** Save the current script as a named preset, or append a saved preset's rules. */
+function PresetBar({ rules, onApply }: { rules: Rule[]; onApply: (rules: Rule[]) => void }) {
+  const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
+
+  const save = () => {
+    const name = window.prompt('Save this script as a reusable preset named:');
+    if (!name) return;
+    setPresets(savePreset(name, rules));
+  };
+
+  return (
+    <div className="toolbar">
+      <button className="secondary mini" onClick={save} disabled={rules.length === 0}>
+        💾 Save script as preset
+      </button>
+      <span className="muted" style={{ fontSize: '0.78rem' }}>Apply preset:</span>
+      <select
+        value=""
+        onChange={(e) => {
+          const p = presets.find((x) => x.id === e.target.value);
+          if (p) onApply(p.rules.map((r) => ({ ...r })));
+        }}
+        disabled={presets.length === 0}
+      >
+        <option value="">{presets.length ? '— choose —' : '(none saved)'}</option>
+        {presets.map((p) => (
+          <option key={p.id} value={p.id}>{p.name} ({p.rules.length})</option>
+        ))}
+      </select>
+      {presets.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) setPresets(deletePreset(e.target.value));
+          }}
+        >
+          <option value="">🗑 delete preset…</option>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }
