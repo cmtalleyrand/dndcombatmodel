@@ -37,7 +37,9 @@ export interface MonteCarloResult {
 export function runMany(scenario: Scenario, simulations: number, baseSeed: number): MonteCarloResult {
   const runs: RunResult[] = [];
   for (let i = 0; i < simulations; i++) {
-    runs.push(runSimulation(scenario, deriveSeed(baseSeed, i)));
+    // Only the representative run (the first, surfaced as sampleRun) records
+    // per-turn frames for the animated replay — the rest stay light.
+    runs.push(runSimulation(scenario, deriveSeed(baseSeed, i), i === 0));
   }
   return { runs, stats: aggregate(scenario, runs) };
 }

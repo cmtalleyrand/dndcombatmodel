@@ -3,7 +3,7 @@
 import { dropConcentration, performAction } from './actions';
 import { CONDITION_CATALOG } from './conditions';
 import { RNG, rollD20, rollDice, deriveSeed } from './dice';
-import type { LogEvent } from './log';
+import type { LogEvent, TurnFrame, CombatantSnapshot } from './log';
 import { chooseAction } from './rules';
 import {
   abilityMod,
@@ -35,6 +35,19 @@ export interface RunResult {
   outcomes: CombatantOutcome[];
   /** damage dealt by each combatant, per round (index 0 = round 1). */
   damageByRound: Record<string, number[]>;
+  /** per-turn state snapshots for animated replay; empty unless recordFrames was set. */
+  frames: TurnFrame[];
+}
+
+/** Capture every combatant's animatable state at the current moment. */
+function snapshotState(state: CombatState): CombatantSnapshot[] {
+  return state.combatants.map((c) => ({
+    id: c.base.id,
+    hp: Math.max(0, c.hp),
+    maxHp: c.base.maxHp,
+    position: c.position,
+    alive: isAlive(c),
+  }));
 }
 
 /** Resolve initiative order, returning combatant ids in turn order. */
@@ -103,8 +116,12 @@ function expireEvent(
   };
 }
 
-/** Run a single full combat simulation. */
-export function runSimulation(scenario: Scenario, seed: number): RunResult {
+/**
+ * Run a single full combat simulation. When `recordFrames` is set, a per-turn
+ * `TurnFrame` snapshot is captured for animated replay (skipped otherwise to keep
+ * the Monte-Carlo bulk light).
+ */
+export function runSimulation(scenario: Scenario, seed: number, recordFrames = false): RunResult {
   const rng = new RNG(seed);
   const state = buildCombatState(scenario);
   state.order = rollInitiative(scenario, rng);
@@ -112,6 +129,12 @@ export function runSimulation(scenario: Scenario, seed: number): RunResult {
   const events: LogEvent[] = [];
   const damageByRound: Record<string, number[]> = {};
   for (const c of state.combatants) damageByRound[c.base.id] = [];
+
+  const frames: TurnFrame[] = [];
+  if (recordFrames) {
+    // Frame 0: pre-combat setup — starting positions and full HP.
+    frames.push({ index: 0, round: 0, actorId: null, events: [], snapshot: snapshotState(state) });
+  }
 
   let winner: Side | 'draw' = 'draw';
 
@@ -130,6 +153,9 @@ export function runSimulation(scenario: Scenario, seed: number): RunResult {
       actor.movedThisTurn = 0;
       actor.riderUsedThisTurn.clear();
 
+      // Mark where this turn's events begin so we can attach them to its frame.
+      const eventsBefore = events.length;
+
       // Conditions tick at the start of the bearer's turn: durations applied during
       // other combatants' turns (e.g. Dodge, Sleep) last a full round before resolving.
       tickConditions(state, actor, rng, events);
@@ -142,20 +168,29 @@ export function runSimulation(scenario: Scenario, seed: number): RunResult {
           type: 'skip',
           message: `${actor.base.name} cannot act (incapacitated).`,
         });
-        continue;
+      } else {
+        const choice = chooseAction(state, actor);
+        if (!choice) {
+          events.push({
+            round,
+            actorId: actor.base.id,
+            actorName: actor.base.name,
+            type: 'skip',
+            message: `${actor.base.name} has no valid action and waits.`,
+          });
+        } else {
+          performAction(state, rng, actor, choice.action, choice.targets, events);
+        }
       }
 
-      const choice = chooseAction(state, actor);
-      if (!choice) {
-        events.push({
+      if (recordFrames) {
+        frames.push({
+          index: frames.length,
           round,
           actorId: actor.base.id,
-          actorName: actor.base.name,
-          type: 'skip',
-          message: `${actor.base.name} has no valid action and waits.`,
+          events: events.slice(eventsBefore),
+          snapshot: snapshotState(state),
         });
-      } else {
-        performAction(state, rng, actor, choice.action, choice.targets, events);
       }
 
       // check for combat end mid-round
@@ -171,11 +206,11 @@ export function runSimulation(scenario: Scenario, seed: number): RunResult {
     const sides = aliveSides(state);
     if (sides.size <= 1) {
       winner = sides.has('pc') ? 'pc' : sides.has('monster') ? 'monster' : 'draw';
-      return finalize(state, round, winner, events, damageByRound);
+      return finalize(state, round, winner, events, damageByRound, frames);
     }
   }
 
-  return finalize(state, scenario.maxRounds, 'draw', events, damageByRound);
+  return finalize(state, scenario.maxRounds, 'draw', events, damageByRound, frames);
 }
 
 function finalize(
@@ -184,6 +219,7 @@ function finalize(
   winner: Side | 'draw',
   events: LogEvent[],
   damageByRound: Record<string, number[]>,
+  frames: TurnFrame[],
 ): RunResult {
   const outcomes: CombatantOutcome[] = state.combatants.map((c) => ({
     id: c.base.id,
@@ -196,7 +232,7 @@ function finalize(
     damageTaken: c.damageTaken,
     healingDone: c.healingDone,
   }));
-  return { winner, rounds, events, outcomes, damageByRound };
+  return { winner, rounds, events, outcomes, damageByRound, frames };
 }
 
 // re-export helpers some callers/tests may want
