@@ -8,14 +8,16 @@ import { InitiativeTab } from './InitiativeTab';
 import { RunTab } from './RunTab';
 import { ReplayTab } from './ReplayTab';
 import { ScenarioIO } from './ScenarioIO';
+import { AIAuthoringTab } from './AIAuthoringTab';
 
-type Tab = 'pcs' | 'monsters' | 'actions' | 'initiative' | 'run' | 'replay';
+type Tab = 'pcs' | 'monsters' | 'actions' | 'initiative' | 'run' | 'replay' | 'ai' ;
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'pcs', label: 'PCs' },
   { id: 'monsters', label: 'Monsters' },
   { id: 'actions', label: 'Action Library' },
   { id: 'initiative', label: 'Initiative' },
+  { id: 'ai', label: 'AI Drafts' },
   { id: 'run', label: 'Run & Results' },
   { id: 'replay', label: 'Replay' },
 ];

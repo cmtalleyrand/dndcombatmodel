@@ -6,6 +6,26 @@ import { SRD_WEAPONS } from '../data/weapons';
 
 const STORAGE_KEY = 'dnd-combat-sim:scenario:v1';
 const PRESETS_KEY = 'dnd-combat-sim:presets:v1';
+export const AI_DRAFTS_KEY = 'dnd-combat-sim:ai-drafts:v1';
+export const BUNDLE_VERSION = 1;
+
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+export interface AIDraft {
+  id: string;
+  name: string;
+  created: string;
+  updated: string;
+  approvalTemplate: string;
+  draftData: JsonValue;
+}
+
+export interface FullBundle {
+  version: number;
+  currentScenario: Scenario;
+  scriptPresets?: ScriptPreset[];
+  savedAIDrafts?: AIDraft[];
+}
 
 export function loadScenario(): Scenario {
   try {
@@ -145,6 +165,48 @@ export function deletePreset(id: string): ScriptPreset[] {
   return next;
 }
 
+// ---- AI drafts (stored separately from the scenario) ----
+
+export function loadAIDrafts(): AIDraft[] {
+  try {
+    const raw = localStorage.getItem(AI_DRAFTS_KEY);
+    if (raw) return JSON.parse(raw) as AIDraft[];
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export function saveAIDrafts(drafts: AIDraft[]): AIDraft[] {
+  const next = sanitizeForExport(drafts) as AIDraft[];
+  try {
+    localStorage.setItem(AI_DRAFTS_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+  return next;
+}
+
+export function upsertAIDraft(draft: AIDraft): AIDraft[] {
+  const safeDraft = sanitizeForExport(draft) as AIDraft;
+  const drafts = loadAIDrafts();
+  const idx = drafts.findIndex((d) => d.id === safeDraft.id);
+  const next = idx >= 0 ? drafts.map((d) => (d.id === safeDraft.id ? safeDraft : d)) : [...drafts, safeDraft];
+  return saveAIDrafts(next);
+}
+
+export function duplicateAIDraft(id: string): AIDraft[] {
+  const drafts = loadAIDrafts();
+  const src = drafts.find((d) => d.id === id);
+  if (!src) return drafts;
+  const now = new Date().toISOString();
+  return saveAIDrafts([...drafts, { ...src, id: genId('draft'), name: `${src.name} (copy)`, created: now, updated: now }]);
+}
+
+export function deleteAIDraft(id: string): AIDraft[] {
+  return saveAIDrafts(loadAIDrafts().filter((d) => d.id !== id));
+}
+
 export function genId(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -152,16 +214,65 @@ export function genId(prefix: string): string {
 // ---- JSON import/export ----
 
 export function exportScenario(scenario: Scenario): string {
-  return JSON.stringify(scenario, null, 2);
+  return JSON.stringify(sanitizeForExport(scenario), null, 2);
 }
 
 export function importScenario(json: string): Scenario {
   const parsed = JSON.parse(json) as Scenario;
+  return normalizeScenario(parsed);
+}
+
+export function exportFullBundle(scenario: Scenario, options: { includePresets?: boolean; includeAIDrafts?: boolean } = {}): string {
+  const bundle: FullBundle = {
+    version: BUNDLE_VERSION,
+    currentScenario: scenario,
+  };
+  if (options.includePresets ?? true) bundle.scriptPresets = loadPresets();
+  if (options.includeAIDrafts ?? true) bundle.savedAIDrafts = loadAIDrafts();
+  return JSON.stringify(sanitizeForExport(bundle), null, 2);
+}
+
+export function importFullBundle(json: string): FullBundle {
+  const parsed = JSON.parse(json) as FullBundle;
+  if (!parsed.version || !parsed.currentScenario) {
+    throw new Error('Invalid bundle JSON: missing version or currentScenario.');
+  }
+  const bundle: FullBundle = {
+    version: parsed.version,
+    currentScenario: normalizeScenario(parsed.currentScenario),
+  };
+  if (parsed.scriptPresets) bundle.scriptPresets = sanitizeForExport(parsed.scriptPresets) as ScriptPreset[];
+  if (parsed.savedAIDrafts) bundle.savedAIDrafts = sanitizeForExport(parsed.savedAIDrafts) as AIDraft[];
+  if (bundle.scriptPresets) {
+    try {
+      localStorage.setItem(PRESETS_KEY, JSON.stringify(bundle.scriptPresets));
+    } catch {
+      // ignore
+    }
+  }
+  if (bundle.savedAIDrafts) saveAIDrafts(bundle.savedAIDrafts);
+  return bundle;
+}
+
+function normalizeScenario(parsed: Scenario): Scenario {
   if (!parsed.combatants || !parsed.actions) {
     throw new Error('Invalid scenario JSON: missing combatants or actions.');
   }
-  // back-compat: older exports (and v1 scenarios) have no weapons / target lists.
   if (!parsed.weapons) parsed.weapons = SRD_WEAPONS;
   if (!parsed.targetLists) parsed.targetLists = [];
-  return parsed;
+  return sanitizeForExport(parsed) as Scenario;
+}
+
+function sanitizeForExport(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => sanitizeForExport(item));
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value).filter(([key]) => !isApiKeyField(key));
+    return Object.fromEntries(entries.map(([key, item]) => [key, sanitizeForExport(item)]));
+  }
+  return value;
+}
+
+function isApiKeyField(key: string): boolean {
+  const normalized = key.replace(/[-_\s]/g, '').toLowerCase();
+  return normalized.includes('apikey') || normalized === 'authorization' || normalized === 'openaitoken';
 }
