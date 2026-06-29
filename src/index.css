@@ -265,6 +265,11 @@ td.num, th.num {
   color: var(--muted);
 }
 
+.log .move {
+  color: #8a9bb5;
+  font-style: italic;
+}
+
 .stat-big {
   font-size: 1.6rem;
   font-weight: 700;

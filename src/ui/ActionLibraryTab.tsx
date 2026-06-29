@@ -4,8 +4,11 @@ import type {
   Action,
   ActionKind,
   ConditionKind,
+  DamageRider,
   DamageType,
   Scenario,
+  TargetList,
+  TargetStrategy,
   Weapon,
   WeaponProperty,
 } from '../engine/types';
@@ -13,8 +16,10 @@ import {
   duplicateAction,
   genId,
   removeAction,
+  removeTargetList,
   removeWeapon,
   upsertAction,
+  upsertTargetList,
   upsertWeapon,
 } from '../state/store';
 import { describeActionGeneric } from './describe';
@@ -59,6 +64,7 @@ export function ActionLibraryTab({ scenario, setScenario }: Props) {
   return (
     <div>
       <WeaponsSection scenario={scenario} setScenario={setScenario} />
+      <TargetListsSection scenario={scenario} setScenario={setScenario} />
 
       <div className="panel">
         <div className="row spread">
@@ -315,6 +321,39 @@ function ActionEditor({ action, weapons, onChange }: { action: Action; weapons: 
         </div>
       )}
 
+      {(isAttack || isSpellLike) && (
+        <div className="section">
+          <div className="section-title">Range & area (feet)</div>
+          <div className="field-row">
+            <label>
+              Range
+              <input className="num" type="number" placeholder={isAttack ? 'weapon' : '∞'} value={action.range ?? ''} onChange={(e) => up({ range: e.target.value === '' ? undefined : +e.target.value })} />
+            </label>
+            <label>
+              AoE radius
+              <input className="num" type="number" placeholder="—" value={action.aoeRadius ?? ''} onChange={(e) => up({ aoeRadius: e.target.value === '' ? undefined : +e.target.value })} />
+            </label>
+            <span className="help" style={{ marginTop: '0.9rem' }}>
+              Melee range 0 = same block. AoE hits everyone within radius of the primary target.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {action.kind === 'move' && (
+        <div className="field-row">
+          <label>
+            Move mode
+            <select value={action.moveMode ?? 'advance'} onChange={(e) => up({ moveMode: e.target.value as 'advance' | 'retreat' })}>
+              <option value="advance">advance toward nearest enemy</option>
+              <option value="retreat">retreat from nearest enemy (kite)</option>
+            </select>
+          </label>
+        </div>
+      )}
+
+      {(isAttack || isSpellLike) && <RidersEditor action={action} onChange={onChange} />}
+
       <ConditionEditor action={action} onChange={onChange} />
 
       <label style={{ width: '100%', marginTop: '0.4rem' }}>
@@ -325,7 +364,82 @@ function ActionEditor({ action, weapons, onChange }: { action: Action; weapons: 
   );
 }
 
-const COND_KINDS: ConditionKind[] = ['prone', 'poisoned', 'asleep', 'blinded', 'restrained', 'stunned', 'paralyzed', 'frightened', 'blessed'];
+const COND_KINDS: ConditionKind[] = ['prone', 'poisoned', 'asleep', 'blinded', 'restrained', 'stunned', 'paralyzed', 'frightened', 'blessed', 'raging', 'marked'];
+
+const RIDER_TRIGGERS: { value: DamageRider['trigger']; label: string }[] = [
+  { value: 'always', label: 'always on hit' },
+  { value: 'hasAdvantage', label: 'when you have advantage' },
+  { value: 'advantageOrAllyAdjacent', label: 'advantage or ally adjacent (Sneak Attack)' },
+  { value: 'targetHasCondition', label: 'target has condition (Hunter’s Mark)' },
+  { value: 'selfHasCondition', label: 'self has condition (Rage)' },
+];
+
+const RIDER_PRESETS: Record<string, DamageRider> = {
+  sneak: { label: 'Sneak Attack', bonusDice: '2d6', trigger: 'advantageOrAllyAdjacent', oncePerTurn: true },
+  rage: { label: 'Rage', bonusFlat: 2, trigger: 'selfHasCondition', condition: 'raging', meleeOnly: true },
+  mark: { label: "Hunter's Mark", bonusDice: '1d6', trigger: 'targetHasCondition', condition: 'marked' },
+};
+
+function RidersEditor({ action, onChange }: { action: Action; onChange: (a: Action) => void }) {
+  const riders = action.riders ?? [];
+  const set = (next: DamageRider[]) => onChange({ ...action, riders: next.length ? next : undefined });
+  const upd = (i: number, patch: Partial<DamageRider>) => set(riders.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  return (
+    <div className="section">
+      <div className="section-title">Conditional damage riders</div>
+      {riders.map((r, i) => (
+        <div className="modifiers" key={i}>
+          <div className="field-row">
+            <label>
+              Label
+              <input className="short" value={r.label ?? ''} onChange={(e) => upd(i, { label: e.target.value })} />
+            </label>
+            <label>
+              Bonus dice
+              <input className="short" placeholder="e.g. 2d6" value={r.bonusDice ?? ''} onChange={(e) => upd(i, { bonusDice: e.target.value || undefined })} />
+            </label>
+            <label>
+              + flat
+              <input className="num" type="number" placeholder="0" value={r.bonusFlat ?? ''} onChange={(e) => upd(i, { bonusFlat: e.target.value === '' ? undefined : +e.target.value })} />
+            </label>
+            <button className="danger mini" style={{ marginTop: '0.9rem' }} onClick={() => set(riders.filter((_, j) => j !== i))}>✕</button>
+          </div>
+          <div className="field-row">
+            <label>
+              Trigger
+              <select value={r.trigger} onChange={(e) => upd(i, { trigger: e.target.value as DamageRider['trigger'] })}>
+                {RIDER_TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+            {(r.trigger === 'targetHasCondition' || r.trigger === 'selfHasCondition') && (
+              <label>
+                Condition
+                <select value={r.condition ?? 'marked'} onChange={(e) => upd(i, { condition: e.target.value as ConditionKind })}>
+                  {COND_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+              <input type="checkbox" checked={r.oncePerTurn ?? false} onChange={(e) => upd(i, { oncePerTurn: e.target.checked })} />
+              once/turn
+            </label>
+            <label className="check-inline" style={{ marginTop: '0.9rem' }}>
+              <input type="checkbox" checked={r.meleeOnly ?? false} onChange={(e) => upd(i, { meleeOnly: e.target.checked })} />
+              melee only
+            </label>
+          </div>
+        </div>
+      ))}
+      <div className="toolbar">
+        <button className="ghost mini" onClick={() => set([...riders, RIDER_PRESETS.sneak])}>+ Sneak Attack</button>
+        <button className="ghost mini" onClick={() => set([...riders, RIDER_PRESETS.rage])}>+ Rage</button>
+        <button className="ghost mini" onClick={() => set([...riders, RIDER_PRESETS.mark])}>+ Hunter's Mark</button>
+        <button className="ghost mini" onClick={() => set([...riders, { bonusDice: '1d6', trigger: 'always' }])}>+ Custom</button>
+      </div>
+    </div>
+  );
+}
 
 function ConditionEditor({ action, onChange }: { action: Action; onChange: (a: Action) => void }) {
   const apps = action.applyConditions ?? [];
@@ -450,6 +564,8 @@ function WeaponEditor({ weapon, onChange }: { weapon: Weapon; onChange: (w: Weap
             <option value="martial">martial</option>
           </select>
         </label>
+        <label>Range (ft)<input className="num" type="number" placeholder="0" value={weapon.range ?? ''} onChange={(e) => up({ range: e.target.value === '' ? undefined : +e.target.value })} /></label>
+        <label>Long range<input className="num" type="number" placeholder="—" value={weapon.longRange ?? ''} onChange={(e) => up({ longRange: e.target.value === '' ? undefined : +e.target.value })} /></label>
       </div>
       <div className="row">
         {WEAPON_PROPS.map((p) => (
@@ -468,6 +584,82 @@ function WeaponEditor({ weapon, onChange }: { weapon: Weapon; onChange: (w: Weap
           </label>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reusable target lists
+// ---------------------------------------------------------------------------
+
+const LIST_FALLBACKS: { value: TargetStrategy; label: string }[] = [
+  { value: 'nearestEnemy', label: 'then nearest enemy' },
+  { value: 'lowestHpEnemy', label: 'then lowest-HP enemy' },
+  { value: 'nearestAlly', label: 'then nearest ally' },
+  { value: 'lowestHpAlly', label: 'then lowest-HP ally' },
+  { value: 'none', label: 'no fallback' },
+];
+
+function TargetListsSection({ scenario, setScenario }: Props) {
+  const [open, setOpen] = useState(false);
+
+  const add = () => {
+    const t: TargetList = { id: genId('tl'), name: 'New List', entries: [], fallback: 'nearestEnemy' };
+    setScenario(upsertTargetList(scenario, t));
+    setOpen(true);
+  };
+
+  return (
+    <div className="panel">
+      <div className="row spread">
+        <h2>Target Lists {open ? '' : `(${scenario.targetLists.length})`}</h2>
+        <div className="row">
+          <button className="secondary mini" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Show'}</button>
+          {open && <button className="mini" onClick={add}>+ Add List</button>}
+        </div>
+      </div>
+      {open && (
+        <>
+          <p className="help">
+            Reusable, explicit target priority lists referenced by rules (e.g. "enemy1 → enemy2 →
+            then nearest"). The combatant doesn't need omniscient knowledge — it works down the list,
+            then uses the fallback.
+          </p>
+          {scenario.targetLists.map((tl) => (
+            <div className="card" key={tl.id} style={{ marginBottom: '0.5rem' }}>
+              <div className="field-row">
+                <label>Name<input value={tl.name} onChange={(e) => setScenario(upsertTargetList(scenario, { ...tl, name: e.target.value }))} /></label>
+                <label>
+                  Fallback
+                  <select value={tl.fallback} onChange={(e) => setScenario(upsertTargetList(scenario, { ...tl, fallback: e.target.value as TargetStrategy }))}>
+                    {LIST_FALLBACKS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </label>
+                <button className="danger mini" style={{ marginTop: '0.9rem' }} onClick={() => setScenario(removeTargetList(scenario, tl.id))}>Delete</button>
+              </div>
+              <div className="muted" style={{ fontSize: '0.75rem' }}>Priority order (numbered as you check; uncheck to remove):</div>
+              <div className="row">
+                {scenario.combatants.map((c) => {
+                  const order = tl.entries.indexOf(c.id);
+                  return (
+                    <label key={c.id} className="check-inline" style={{ color: c.side === 'pc' ? 'var(--pc)' : 'var(--monster)' }}>
+                      <input
+                        type="checkbox"
+                        checked={order >= 0}
+                        onChange={(e) => {
+                          const entries = e.target.checked ? [...tl.entries, c.id] : tl.entries.filter((x) => x !== c.id);
+                          setScenario(upsertTargetList(scenario, { ...tl, entries }));
+                        }}
+                      />
+                      {order >= 0 ? `${order + 1}. ` : ''}{c.name}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }

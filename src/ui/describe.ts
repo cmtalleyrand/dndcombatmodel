@@ -34,7 +34,9 @@ export function describeAction(
     const p = resolveAttackProfile(c, action, weapon);
     const count = action.attackCount && action.attackCount > 1 ? `${action.attackCount}× ` : '';
     const abilityNote = p.ability ? ` (${p.ability.toUpperCase()})` : '';
-    return `${count}${sign(p.toHit)} to hit, ${damageString(p.damageDice, p.damageFlat)} ${p.damageType}${abilityNote}`;
+    const rng = action.range ?? weapon?.range;
+    const rangeNote = rng ? `, rng ${rng}ft` : ', melee';
+    return `${count}${sign(p.toHit)} to hit, ${damageString(p.damageDice, p.damageFlat)} ${p.damageType}${abilityNote}${rangeNote}${riderNote(action)}`;
   }
 
   // spell / ability
@@ -58,9 +60,22 @@ export function describeAction(
   if (action.applyConditions?.length) {
     bits.push(`applies ${action.applyConditions.map((a) => a.kind).join(', ')}`);
   }
+  if (action.aoeRadius) bits.push(`AoE ${action.aoeRadius}ft`);
+  if (action.range) bits.push(`rng ${action.range}ft`);
   if (action.concentration) bits.push('concentration');
   if (action.spellLevel) bits.unshift(`L${action.spellLevel}`);
-  return bits.join(', ') || action.name;
+  const out = bits.join(', ') || action.name;
+  return out + riderNote(action);
+}
+
+/** Short suffix listing any conditional damage riders. */
+function riderNote(action: Action): string {
+  if (!action.riders?.length) return '';
+  const parts = action.riders.map((r) => {
+    const amt = [r.bonusDice, r.bonusFlat ? `+${r.bonusFlat}` : ''].filter(Boolean).join('');
+    return `${r.label ?? 'rider'} ${amt}`.trim();
+  });
+  return ` [${parts.join('; ')}]`;
 }
 
 /** A generic (wielder-independent) summary for the action library list. */

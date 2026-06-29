@@ -177,6 +177,27 @@ function CombatantCard({
                 ))}
               </select>
             </label>
+            <label>
+              Position (ft)
+              <input
+                className="num"
+                type="number"
+                step={15}
+                value={combatant.position ?? ''}
+                placeholder="auto"
+                onChange={(e) => update({ position: e.target.value === '' ? undefined : +e.target.value })}
+              />
+            </label>
+            <label>
+              Speed (ft)
+              <input
+                className="num"
+                type="number"
+                step={5}
+                value={combatant.speed ?? 30}
+                onChange={(e) => update({ speed: +e.target.value })}
+              />
+            </label>
           </div>
 
           <h3 style={{ marginTop: '0.5rem' }}>Ability Scores</h3>

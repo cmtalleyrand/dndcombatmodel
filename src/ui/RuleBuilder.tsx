@@ -28,22 +28,34 @@ const CONDITION_TYPES: { value: RuleConditionType; label: string; needs: 'none' 
   { value: 'roundAtLeast', label: 'Round ≥', needs: 'value' },
   { value: 'roundAtMost', label: 'Round ≤', needs: 'value' },
   { value: 'notConcentrating', label: 'Not concentrating', needs: 'none' },
+  { value: 'anyEnemyConcentrating', label: 'An enemy is concentrating', needs: 'none' },
   { value: 'slotAvailable', label: "Spell slot available (for this action's level)", needs: 'none' },
 ];
 
 const TARGET_STRATEGIES: { value: TargetStrategy; label: string }[] = [
+  { value: 'nearestEnemy', label: 'Nearest enemy' },
   { value: 'lowestHpEnemy', label: 'Lowest-HP enemy' },
   { value: 'highestHpEnemy', label: 'Highest-HP enemy' },
-  { value: 'namedThenLowestHpEnemy', label: 'Named priority list → lowest-HP enemy' },
+  { value: 'none', label: 'Explicit list / target list (below)' },
   { value: 'allEnemies', label: 'All enemies (AoE)' },
+  { value: 'nearestAlly', label: 'Nearest ally (incl. self)' },
   { value: 'lowestHpAlly', label: 'Lowest-HP ally (incl. self)' },
   { value: 'allAllies', label: 'All allies (incl. self)' },
   { value: 'self', label: 'Self' },
 ];
 
+/** Fallback strategies offered for explicit lists. */
+const FALLBACK_STRATEGIES: { value: TargetStrategy; label: string }[] = [
+  { value: 'nearestEnemy', label: 'then nearest enemy' },
+  { value: 'lowestHpEnemy', label: 'then lowest-HP enemy' },
+  { value: 'nearestAlly', label: 'then nearest ally' },
+  { value: 'lowestHpAlly', label: 'then lowest-HP ally' },
+  { value: 'none', label: 'no fallback' },
+];
+
 const CONDITION_KINDS: ConditionKind[] = [
   'prone', 'poisoned', 'asleep', 'unconscious', 'blinded', 'restrained',
-  'stunned', 'paralyzed', 'frightened', 'blessed', 'dodging',
+  'stunned', 'paralyzed', 'frightened', 'blessed', 'dodging', 'raging', 'marked',
 ];
 
 export function RuleBuilder({ combatant, scenario, onChange }: Props) {
@@ -190,30 +202,59 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
               </label>
             </div>
 
-            {rule.target.strategy === 'namedThenLowestHpEnemy' && (
-              <div style={{ marginTop: '0.4rem' }}>
-                <div className="muted" style={{ fontSize: '0.75rem' }}>Named priority order (checked = in list):</div>
-                <div className="row">
-                  {enemies.map((en) => {
-                    const list = rule.target.namedTargets ?? [];
-                    const checked = list.includes(en.id);
-                    return (
-                      <label key={en.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const set = e.target.checked
-                              ? [...list, en.id]
-                              : list.filter((x) => x !== en.id);
-                            setRule(idx, { target: { ...rule.target, namedTargets: set } });
-                          }}
-                        />
-                        {en.name}
-                      </label>
-                    );
-                  })}
+            {(rule.target.strategy === 'none' || rule.target.strategy === 'namedThenLowestHpEnemy') && (
+              <div className="modifiers" style={{ marginTop: '0.4rem' }}>
+                <div className="field-row">
+                  <label>
+                    Reusable target list
+                    <select
+                      value={rule.target.listId ?? ''}
+                      onChange={(e) => setRule(idx, { target: { ...rule.target, listId: e.target.value || undefined } })}
+                    >
+                      <option value="">— inline list below —</option>
+                      {scenario.targetLists.map((tl) => (
+                        <option key={tl.id} value={tl.id}>{tl.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {!rule.target.listId && (
+                    <label>
+                      Fallback
+                      <select
+                        value={rule.target.fallback ?? 'nearestEnemy'}
+                        onChange={(e) => setRule(idx, { target: { ...rule.target, fallback: e.target.value as TargetStrategy } })}
+                      >
+                        {FALLBACK_STRATEGIES.map((f) => (
+                          <option key={f.value} value={f.value}>{f.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                 </div>
+                {!rule.target.listId && (
+                  <>
+                    <div className="muted" style={{ fontSize: '0.75rem' }}>Explicit priority order (check to include; order follows the roster):</div>
+                    <div className="row">
+                      {enemies.map((en) => {
+                        const list = rule.target.namedTargets ?? [];
+                        const checked = list.includes(en.id);
+                        return (
+                          <label key={en.id} className="check-inline">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                const set = e.target.checked ? [...list, en.id] : list.filter((x) => x !== en.id);
+                                setRule(idx, { target: { ...rule.target, namedTargets: set } });
+                              }}
+                            />
+                            {en.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

@@ -25,6 +25,22 @@ deployed as a static site to GitHub Pages.
   library, both editable. **Duplicate** any action or weapon to make an edited variant.
 - **Script reuse:** duplicate a single rule, **copy a whole script** from another
   combatant, or **save/apply named script presets** (stored in your browser).
+- **Linear positioning:** each combatant has a position on a 1D battlefield (15ft
+  blocks) and a speed. A turn is *move up to speed + one action*; attackers
+  **auto-advance** toward an out-of-range target before striking (and explicit
+  Move actions advance or kite). Weapons/spells have a **range** (with long-range
+  disadvantage) and spells can have a linear **AoE radius**. A Battlefield map on the
+  Initiative tab plots everyone.
+- **Conditional feature riders:** bonus damage gated by a trigger — **Sneak Attack**
+  (once/turn, needs advantage or an ally adjacent to the target), **Rage** (bonus melee
+  damage + physical resistance while raging), and **Hunter's Mark/Hex** (bonus dice vs a
+  marked target). Add them to any attack from the action editor.
+- **Flexible targeting:** reusable, explicit **target priority lists** (e.g. "enemy1 →
+  enemy2 → then nearest") referenced by rules, plus nearest/lowest-HP fallbacks — no
+  assumption of omniscient knowledge.
+- **Concentration:** spells that require it drop prior concentration, force a CON save
+  when the caster takes damage, and end when the caster is downed; rules can branch on
+  *not concentrating* / *an enemy is concentrating*.
 - **Priority scripts:** each combatant runs an ordered list of rules. The first rule
   whose *condition* passes and whose action is *available* (slot left, legal target)
   fires. Conditions include: always, self/ally HP below %, living-enemy count,
@@ -46,11 +62,10 @@ deployed as a static site to GitHub Pages.
 
 ## What the simulator does *not* model yet
 
-Reactions (opportunity attacks, Shield, Counterspell), conditional feature riders
-(once-per-turn sneak attack, rage, hunter's mark — only static/auto bonuses are modelled
-for now), real movement/positioning and area geometry, combining a move with an action in
-the same turn, and finer rules edge cases (legendary actions, full resistance/immunity
-matrices, death saves). These are intentionally deferred — see the in-app notes and the plan.
+Reactions (opportunity attacks, Shield, Counterspell), 2D positioning and area geometry
+(space is modelled as a 1D line), and finer rules edge cases (legendary actions, full
+resistance/immunity matrices beyond physical resistance, death-save detail). These are
+intentionally deferred — see the in-app notes and the plan.
 
 ## Getting started
 
