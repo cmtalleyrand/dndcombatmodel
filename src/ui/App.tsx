@@ -6,14 +6,16 @@ import { ActionLibraryTab } from './ActionLibraryTab';
 import { InitiativeTab } from './InitiativeTab';
 import { RunTab } from './RunTab';
 import { ScenarioIO } from './ScenarioIO';
+import { AIAuthoringTab } from './AIAuthoringTab';
 
-type Tab = 'pcs' | 'monsters' | 'actions' | 'initiative' | 'run';
+type Tab = 'pcs' | 'monsters' | 'actions' | 'initiative' | 'ai' | 'run';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'pcs', label: 'PCs' },
   { id: 'monsters', label: 'Monsters' },
   { id: 'actions', label: 'Action Library' },
   { id: 'initiative', label: 'Initiative' },
+  { id: 'ai', label: 'AI Drafts' },
   { id: 'run', label: 'Run & Results' },
 ];
 
@@ -70,6 +72,7 @@ export function App() {
       )}
       {tab === 'actions' && <ActionLibraryTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'initiative' && <InitiativeTab scenario={scenario} setScenario={setScenario} />}
+      {tab === 'ai' && <AIAuthoringTab />}
       {tab === 'run' && <RunTab scenario={scenario} />}
     </div>
   );
