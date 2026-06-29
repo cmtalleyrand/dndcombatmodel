@@ -1,0 +1,123 @@
+// Evaluate a combatant's priority script to choose an action + targets for its turn.
+
+import { hasCondition } from './conditions';
+import {
+  alliesOf,
+  enemiesOf,
+  isAlive,
+  type CombatantState,
+  type CombatState,
+} from './state';
+import { resolveTargets } from './targeting';
+import type { Action, Rule, RuleCondition } from './types';
+
+export interface ChosenAction {
+  rule: Rule;
+  action: Action;
+  targets: CombatantState[];
+}
+
+function hpPct(c: CombatantState): number {
+  return (c.hp / c.base.maxHp) * 100;
+}
+
+/** Evaluate a single rule predicate against the current state. */
+export function evaluateCondition(
+  state: CombatState,
+  actor: CombatantState,
+  cond: RuleCondition,
+  action: Action,
+): boolean {
+  switch (cond.type) {
+    case 'always':
+      return true;
+
+    case 'selfHpBelowPct':
+      return hpPct(actor) < (cond.value ?? 0);
+
+    case 'anyAllyHpBelowPct':
+      // Downed allies (0 HP) count as below any positive threshold so healers prioritize them.
+      return alliesOf(state, actor).some((a) => hpPct(a) < (cond.value ?? 0));
+
+    case 'enemyCountAtLeast':
+      return enemiesOf(state, actor).filter(isAlive).length >= (cond.value ?? 0);
+
+    case 'enemyCountAtMost':
+      return enemiesOf(state, actor).filter(isAlive).length <= (cond.value ?? 0);
+
+    case 'selfHasCondition':
+      return cond.condition ? hasCondition(actor.conditions, cond.condition) : false;
+
+    case 'anyEnemyHasCondition':
+      return cond.condition
+        ? enemiesOf(state, actor)
+            .filter(isAlive)
+            .some((e) => hasCondition(e.conditions, cond.condition!))
+        : false;
+
+    case 'roundAtLeast':
+      return state.round >= (cond.value ?? 0);
+
+    case 'roundAtMost':
+      return state.round <= (cond.value ?? 0);
+
+    case 'notConcentrating':
+      return !actor.concentratingOn;
+
+    case 'slotAvailable':
+      return hasSlot(actor, action);
+
+    default:
+      return false;
+  }
+}
+
+function hasSlot(actor: CombatantState, action: Action): boolean {
+  if (!action.spellLevel || action.spellLevel <= 0) return true;
+  return (actor.spellSlots[action.spellLevel] ?? 0) > 0;
+}
+
+function hasUses(actor: CombatantState, action: Action): boolean {
+  if (action.uses === undefined) return true;
+  const remaining = actor.usesRemaining[action.id] ?? action.uses;
+  return remaining > 0;
+}
+
+/** Whether the actor can currently perform the action (resources available). */
+export function actionAvailable(actor: CombatantState, action: Action): boolean {
+  return hasSlot(actor, action) && hasUses(actor, action);
+}
+
+/** Number of targets an action wants. */
+function targetCount(action: Action): number {
+  if (action.kind === 'dodge' || action.kind === 'move') return 0;
+  // an attack with attackCount makes multiple swings at `targets` distinct targets
+  return Math.max(1, action.targets);
+}
+
+/**
+ * Choose the first rule (by ascending priority) whose condition passes, whose
+ * action is available, and which resolves to at least one legal target (unless
+ * the action needs no target). Returns undefined if nothing applies.
+ */
+export function chooseAction(
+  state: CombatState,
+  actor: CombatantState,
+): ChosenAction | undefined {
+  const rules = [...actor.base.script].sort((a, b) => a.priority - b.priority);
+  for (const rule of rules) {
+    const action = state.actionsById[rule.actionId];
+    if (!action) continue;
+    if (!actionAvailable(actor, action)) continue;
+    if (!evaluateCondition(state, actor, rule.condition, action)) continue;
+
+    const needed = targetCount(action);
+    if (needed === 0) {
+      return { rule, action, targets: [] };
+    }
+    const targets = resolveTargets(state, actor, rule.target, needed);
+    if (targets.length === 0) continue; // no legal target — try next rule
+    return { rule, action, targets };
+  }
+  return undefined;
+}
