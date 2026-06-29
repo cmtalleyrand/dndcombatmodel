@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Scenario } from '../engine/types';
+import type { AggregateStats } from '../engine/statistics';
 import { loadScenario, saveScenario, resetScenario } from '../state/store';
 import { CombatantsTab } from './CombatantsTab';
 import { ActionLibraryTab } from './ActionLibraryTab';
 import { InitiativeTab } from './InitiativeTab';
 import { RunTab } from './RunTab';
+import { ReplayTab } from './ReplayTab';
 import { ScenarioIO } from './ScenarioIO';
 import { AIAuthoringTab } from './AIAuthoringTab';
 
-type Tab = 'pcs' | 'monsters' | 'actions' | 'initiative' | 'ai' | 'run';
+type Tab = 'pcs' | 'monsters' | 'actions' | 'initiative' | 'run' | 'replay' | 'ai' ;
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'pcs', label: 'PCs' },
@@ -17,15 +19,21 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'initiative', label: 'Initiative' },
   { id: 'ai', label: 'AI Drafts' },
   { id: 'run', label: 'Run & Results' },
+  { id: 'replay', label: 'Replay' },
 ];
 
 export function App() {
   const [scenario, setScenarioState] = useState<Scenario>(() => loadScenario());
   const [tab, setTab] = useState<Tab>('pcs');
+  // The latest Monte-Carlo run, lifted here so both Run & Results and the Replay
+  // tab read the same result (the sample run carries the animation frames).
+  const [stats, setStats] = useState<AggregateStats | null>(null);
 
   const setScenario = (s: Scenario) => {
     setScenarioState(s);
     saveScenario(s);
+    // A changed scenario invalidates the previous run's results/replay.
+    setStats(null);
   };
 
   useEffect(() => {
@@ -60,6 +68,7 @@ export function App() {
             {t.label}
             {t.id === 'pcs' && ` (${pcs.length}/4)`}
             {t.id === 'monsters' && ` (${monsters.length}/8)`}
+            {t.id === 'replay' && stats && <span className="tab-dot" aria-label="replay ready" />}
           </button>
         ))}
       </div>
@@ -72,8 +81,10 @@ export function App() {
       )}
       {tab === 'actions' && <ActionLibraryTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'initiative' && <InitiativeTab scenario={scenario} setScenario={setScenario} />}
-      {tab === 'ai' && <AIAuthoringTab />}
-      {tab === 'run' && <RunTab scenario={scenario} />}
+      {tab === 'run' && <RunTab scenario={scenario} stats={stats} onResults={setStats} />}
+      {tab === 'replay' && (
+        <ReplayTab scenario={scenario} stats={stats} onGoToRun={() => setTab('run')} />
+      )}
     </div>
   );
 }

@@ -92,6 +92,46 @@ describe('runSimulation', () => {
   });
 });
 
+describe('replay frames', () => {
+  it('records no frames by default but captures per-turn snapshots when asked', () => {
+    const s = baseScenario();
+    expect(runSimulation(s, 11).frames).toHaveLength(0);
+
+    const r = runSimulation(s, 11, true);
+    // initial setup frame + at least one turn
+    expect(r.frames.length).toBeGreaterThan(1);
+
+    const [setup, ...turns] = r.frames;
+    expect(setup.index).toBe(0);
+    expect(setup.round).toBe(0);
+    expect(setup.actorId).toBeNull();
+    expect(setup.events).toHaveLength(0);
+
+    // every frame snapshots all combatants with sane values
+    for (const f of r.frames) {
+      expect(f.snapshot.map((sn) => sn.id).sort()).toEqual(['m1', 'pc1']);
+      for (const sn of f.snapshot) {
+        expect(Number.isFinite(sn.position)).toBe(true);
+        expect(sn.hp).toBeGreaterThanOrEqual(0);
+        expect(sn.hp).toBeLessThanOrEqual(sn.maxHp);
+        expect(typeof sn.alive).toBe('boolean');
+      }
+    }
+
+    // turn frames are indexed sequentially and reference a real actor
+    turns.forEach((f, i) => {
+      expect(f.index).toBe(i + 1);
+      expect(['pc1', 'm1']).toContain(f.actorId);
+    });
+
+    // the winning side has a survivor in the final frame
+    if (r.winner !== 'draw') {
+      const last = r.frames[r.frames.length - 1].snapshot;
+      expect(last.some((sn) => sn.alive)).toBe(true);
+    }
+  });
+});
+
 describe('fixed initiative', () => {
   it('respects the provided order (first acts first)', () => {
     // Glass cannons: whoever swings first usually wins. Put pc first.

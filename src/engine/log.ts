@@ -18,3 +18,25 @@ export interface LogEvent {
 }
 
 export type RoundLog = LogEvent[];
+
+/** Snapshot of a single combatant's animatable state at a point in time. */
+export interface CombatantSnapshot {
+  id: string;
+  hp: number;
+  maxHp: number;
+  position: number;
+  alive: boolean;
+}
+
+/**
+ * A replayable frame: the state of every combatant after one turn (or the initial
+ * setup), plus the log events that occurred during that turn. Drives the animated
+ * combat replay. Frame 0 is the pre-combat setup (round 0, no actor, no events).
+ */
+export interface TurnFrame {
+  index: number;
+  round: number;
+  actorId: string | null;
+  events: LogEvent[];
+  snapshot: CombatantSnapshot[];
+}
