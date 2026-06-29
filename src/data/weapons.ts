@@ -12,9 +12,9 @@ export const SRD_WEAPONS: Weapon[] = [
   { id: 'wpn-quarterstaff', name: 'Quarterstaff', damage: '1d6', versatileDamage: '1d8', damageType: 'bludgeoning', properties: ['versatile'], category: 'simple' },
   { id: 'wpn-spear', name: 'Spear', damage: '1d6', versatileDamage: '1d8', damageType: 'piercing', properties: ['versatile', 'thrown'], category: 'simple' },
 
-  // --- simple ranged ---
-  { id: 'wpn-shortbow', name: 'Shortbow', damage: '1d6', damageType: 'piercing', properties: ['ranged'], category: 'simple' },
-  { id: 'wpn-lightcrossbow', name: 'Light Crossbow', damage: '1d8', damageType: 'piercing', properties: ['ranged'], category: 'simple' },
+  // --- simple ranged --- (range / longRange in feet; beyond normal = disadvantage)
+  { id: 'wpn-shortbow', name: 'Shortbow', damage: '1d6', damageType: 'piercing', properties: ['ranged'], category: 'simple', range: 80, longRange: 320 },
+  { id: 'wpn-lightcrossbow', name: 'Light Crossbow', damage: '1d8', damageType: 'piercing', properties: ['ranged'], category: 'simple', range: 80, longRange: 320 },
 
   // --- martial melee ---
   { id: 'wpn-shortsword', name: 'Shortsword', damage: '1d6', damageType: 'piercing', properties: ['finesse', 'light'], category: 'martial' },
@@ -25,10 +25,10 @@ export const SRD_WEAPONS: Weapon[] = [
   { id: 'wpn-warhammer', name: 'Warhammer', damage: '1d8', versatileDamage: '1d10', damageType: 'bludgeoning', properties: ['versatile'], category: 'martial' },
   { id: 'wpn-greataxe', name: 'Greataxe', damage: '1d12', damageType: 'slashing', properties: ['twoHanded', 'heavy'], category: 'martial' },
   { id: 'wpn-greatsword', name: 'Greatsword', damage: '2d6', damageType: 'slashing', properties: ['twoHanded', 'heavy'], category: 'martial' },
-  { id: 'wpn-glaive', name: 'Glaive', damage: '1d10', damageType: 'slashing', properties: ['twoHanded', 'heavy'], category: 'martial' },
+  { id: 'wpn-glaive', name: 'Glaive', damage: '1d10', damageType: 'slashing', properties: ['twoHanded', 'heavy'], category: 'martial', range: 15 },
 
   // --- martial ranged ---
-  { id: 'wpn-longbow', name: 'Longbow', damage: '1d8', damageType: 'piercing', properties: ['ranged', 'heavy'], category: 'martial' },
+  { id: 'wpn-longbow', name: 'Longbow', damage: '1d8', damageType: 'piercing', properties: ['ranged', 'heavy'], category: 'martial', range: 150, longRange: 600 },
 
   // --- natural / monster ---
   { id: 'wpn-bite', name: 'Bite', damage: '1d6', damageType: 'piercing', properties: [], category: 'simple' },

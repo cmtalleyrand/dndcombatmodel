@@ -1,6 +1,6 @@
 // Scenario persistence (localStorage) and small immutable update helpers.
 
-import type { Action, Combatant, Rule, Scenario, ScriptPreset, Weapon } from '../engine/types';
+import type { Action, Combatant, Rule, Scenario, ScriptPreset, TargetList, Weapon } from '../engine/types';
 import { defaultScenario } from '../data/srd';
 import { SRD_WEAPONS } from '../data/weapons';
 
@@ -13,6 +13,7 @@ export function loadScenario(): Scenario {
     if (raw) {
       const s = JSON.parse(raw) as Scenario;
       if (!s.weapons) s.weapons = SRD_WEAPONS; // back-compat for v1 scenarios
+      if (!s.targetLists) s.targetLists = []; // back-compat for Phase 1/2 scenarios
       return s;
     }
   } catch {
@@ -86,6 +87,19 @@ export function removeWeapon(scenario: Scenario, id: string): Scenario {
   return { ...scenario, weapons: scenario.weapons.filter((w) => w.id !== id) };
 }
 
+// ---- target lists ----
+
+export function upsertTargetList(scenario: Scenario, t: TargetList): Scenario {
+  const idx = scenario.targetLists.findIndex((x) => x.id === t.id);
+  const targetLists =
+    idx >= 0 ? scenario.targetLists.map((x) => (x.id === t.id ? t : x)) : [...scenario.targetLists, t];
+  return { ...scenario, targetLists };
+}
+
+export function removeTargetList(scenario: Scenario, id: string): Scenario {
+  return { ...scenario, targetLists: scenario.targetLists.filter((t) => t.id !== id) };
+}
+
 // ---- script reuse ----
 
 /** Copy one combatant's whole script onto another (renumbering priorities). */
@@ -146,7 +160,8 @@ export function importScenario(json: string): Scenario {
   if (!parsed.combatants || !parsed.actions) {
     throw new Error('Invalid scenario JSON: missing combatants or actions.');
   }
-  // back-compat: older exports (and v1 scenarios) have no weapons library.
+  // back-compat: older exports (and v1 scenarios) have no weapons / target lists.
   if (!parsed.weapons) parsed.weapons = SRD_WEAPONS;
+  if (!parsed.targetLists) parsed.targetLists = [];
   return parsed;
 }

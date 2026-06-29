@@ -7,7 +7,9 @@ import type {
   Combatant,
   ConditionInstance,
   Scenario,
+  Side,
   SpellSlots,
+  TargetList,
   Weapon,
 } from './types';
 import { combineAdvantage, type Advantage } from './dice';
@@ -28,6 +30,14 @@ export interface CombatantState {
   usesRemaining: Record<string, number>;
   /** true once HP <= 0 and (for monsters) dead, or (for PCs) downed. */
   down: boolean;
+  /** current position on the 1D battlefield (feet). */
+  position: number;
+  /** movement speed in feet per turn. */
+  speed: number;
+  /** rider ids/labels already used this turn (for once-per-turn riders). */
+  riderUsedThisTurn: Set<string>;
+  /** feet of movement already spent this turn. */
+  movedThisTurn: number;
   /** per-run tally of damage dealt / taken / healing done. */
   damageDealt: number;
   damageTaken: number;
@@ -41,9 +51,10 @@ export interface CombatState {
   round: number;
   actionsById: Record<string, Action>;
   weaponsById: Record<string, Weapon>;
+  targetListsById: Record<string, TargetList>;
 }
 
-export function initCombatantState(c: Combatant): CombatantState {
+export function initCombatantState(c: Combatant, fallbackPosition = 0): CombatantState {
   const usesRemaining: Record<string, number> = {};
   return {
     base: c,
@@ -52,10 +63,23 @@ export function initCombatantState(c: Combatant): CombatantState {
     spellSlots: { ...c.spellSlots },
     usesRemaining,
     down: false,
+    position: c.position ?? fallbackPosition,
+    speed: c.speed ?? 30,
+    riderUsedThisTurn: new Set(),
+    movedThisTurn: 0,
     damageDealt: 0,
     damageTaken: 0,
     healingDone: 0,
   };
+}
+
+/**
+ * Default 1D layout when a combatant has no explicit position: monsters occupy the
+ * left (rear 0 → front 30), PCs the right (front 30 → rear 45+), fronts meeting at 30.
+ */
+export function defaultPosition(side: Side, indexInSide: number): number {
+  if (side === 'monster') return Math.max(0, 30 - indexInSide * 15);
+  return 30 + indexInSide * 15;
 }
 
 export function buildCombatState(scenario: Scenario): CombatState {
@@ -63,12 +87,21 @@ export function buildCombatState(scenario: Scenario): CombatState {
   for (const a of scenario.actions) actionsById[a.id] = a;
   const weaponsById: Record<string, Weapon> = {};
   for (const w of scenario.weapons ?? []) weaponsById[w.id] = w;
+  const targetListsById: Record<string, TargetList> = {};
+  for (const t of scenario.targetLists ?? []) targetListsById[t.id] = t;
+  // assign default positions per side, by order within that side
+  const sideIndex: Record<string, number> = { pc: 0, monster: 0 };
+  const combatants = scenario.combatants.map((c) => {
+    const idx = sideIndex[c.side]++;
+    return initCombatantState(c, defaultPosition(c.side, idx));
+  });
   return {
-    combatants: scenario.combatants.map(initCombatantState),
+    combatants,
     order: [],
     round: 0,
     actionsById,
     weaponsById,
+    targetListsById,
   };
 }
 
@@ -91,6 +124,25 @@ export function alliesOf(state: CombatState, c: CombatantState): CombatantState[
 
 export function enemiesOf(state: CombatState, c: CombatantState): CombatantState[] {
   return state.combatants.filter((o) => o.base.side !== c.base.side);
+}
+
+/** Linear distance in feet between two combatants. */
+export function distance(a: CombatantState, b: CombatantState): number {
+  return Math.abs(a.position - b.position);
+}
+
+/** Nearest living combatant from a list to `from` (ties broken by list order). */
+export function nearest(from: CombatantState, candidates: CombatantState[]): CombatantState | undefined {
+  let best: CombatantState | undefined;
+  let bestD = Infinity;
+  for (const c of candidates) {
+    const d = distance(from, c);
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  return best;
 }
 
 /** Saving throw bonus for an ability, including proficiency. */

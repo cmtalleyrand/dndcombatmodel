@@ -76,9 +76,10 @@ export const SRD_ACTIONS: Action[] = [
     kind: 'spell',
     targets: 1,
     spellLevel: 1,
+    range: 30,
     heal: '1d8',
     addSpellModToHeal: true,
-    note: 'Heal a single ally for 1d8 + spellcasting modifier.',
+    note: 'Heal a single ally for 1d8 + spellcasting modifier (moves to reach them).',
   },
   {
     id: 'act-bless',
@@ -96,6 +97,7 @@ export const SRD_ACTIONS: Action[] = [
     kind: 'spell',
     targets: 3,
     spellLevel: 1,
+    range: 90,
     save: { ability: 'wis', onSuccess: 'none' }, // DC derived from the caster
     applyConditions: [{ kind: 'asleep', duration: { type: 'rounds', rounds: 10 } }],
     note: 'Targets fall asleep on a failed save (abstracted; wakes when damaged).',
@@ -106,6 +108,7 @@ export const SRD_ACTIONS: Action[] = [
     kind: 'spell',
     targets: 1,
     spellLevel: 1,
+    range: 120,
     damage: '3d4+3',
     damageType: 'force',
     note: 'Auto-hits for 3 darts (3d4+3 to one target).',
@@ -116,9 +119,61 @@ export const SRD_ACTIONS: Action[] = [
     kind: 'spell',
     targets: 1,
     spellAttack: true,
+    range: 120,
     damage: '1d10',
     damageType: 'fire',
     note: 'Cantrip spell attack (attack bonus derived) — no slot cost.',
+  },
+  // --- demo content for Phase 3 features ---
+  {
+    id: 'act-rogue-shortbow',
+    name: 'Shortbow + Sneak Attack',
+    kind: 'attack',
+    targets: 1,
+    weaponId: 'wpn-shortbow',
+    attackCount: 1,
+    riders: [
+      {
+        label: 'Sneak Attack',
+        bonusDice: '2d6',
+        trigger: 'advantageOrAllyAdjacent',
+        oncePerTurn: true,
+      },
+    ],
+    note: '+2d6 once per turn when you have advantage or an ally is adjacent to the target.',
+  },
+  {
+    id: 'act-rage',
+    name: 'Rage',
+    kind: 'ability',
+    targets: 1, // self
+    uses: 3,
+    applyConditions: [{ kind: 'raging', duration: { type: 'rounds', rounds: 10 } }],
+    note: 'Self-buff: physical resistance + bonus melee damage while raging (pair with a Rage rider on a melee attack).',
+  },
+  {
+    id: 'act-hunters-mark',
+    name: "Hunter's Mark",
+    kind: 'spell',
+    targets: 1,
+    spellLevel: 1,
+    range: 90,
+    concentration: true,
+    applyConditions: [{ kind: 'marked', duration: { type: 'concentration', sourceId: '' } }],
+    note: 'Marks a target; attacks against it deal bonus dice (pair with a marked-target rider).',
+  },
+  {
+    id: 'act-fireball',
+    name: 'Fireball (AoE demo)',
+    kind: 'spell',
+    targets: 1,
+    spellLevel: 3,
+    range: 150,
+    aoeRadius: 20,
+    damage: '6d6',
+    damageType: 'fire',
+    save: { ability: 'dex', onSuccess: 'half' },
+    note: 'Hits all enemies within 20ft of the primary target; Dex save for half.',
   },
 ];
 
@@ -137,6 +192,8 @@ export const SAMPLE_PCS: Combatant[] = [
     saveProficiencies: ['wis', 'cha'],
     proficiencyBonus: 2,
     spellcastingAbility: 'wis',
+    position: 30,
+    speed: 30,
     actionIds: ['act-cure-wounds', 'act-bless', 'act-mace'],
     spellSlots: { 1: 4 },
     script: [
@@ -172,15 +229,17 @@ export const SAMPLE_PCS: Combatant[] = [
     abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 10 },
     saveProficiencies: ['str', 'con'],
     proficiencyBonus: 2,
+    position: 30,
+    speed: 30,
     actionIds: ['act-longsword-2x'],
     spellSlots: {},
     script: [
       {
         priority: 1,
-        label: 'Extra Attack on priority target',
+        label: 'Extra Attack — focus orcs, else nearest',
         condition: { type: 'always' },
         actionId: 'act-longsword-2x',
-        target: { strategy: 'namedThenLowestHpEnemy' },
+        target: { strategy: 'none', listId: 'tl-orcs-first' },
       },
     ],
   },
@@ -194,6 +253,8 @@ export const SAMPLE_PCS: Combatant[] = [
     saveProficiencies: ['int', 'wis'],
     proficiencyBonus: 2,
     spellcastingAbility: 'int',
+    position: 45,
+    speed: 30,
     actionIds: ['act-sleep', 'act-magic-missile', 'act-fire-bolt'],
     spellSlots: { 1: 4 },
     script: [
@@ -229,15 +290,17 @@ export const SAMPLE_PCS: Combatant[] = [
     abilityScores: { str: 10, dex: 16, con: 12, int: 12, wis: 13, cha: 14 },
     saveProficiencies: ['dex', 'int'],
     proficiencyBonus: 2,
-    actionIds: ['act-shortbow'],
+    position: 45,
+    speed: 30,
+    actionIds: ['act-rogue-shortbow'],
     spellSlots: {},
     script: [
       {
         priority: 1,
-        label: 'Shoot lowest-HP enemy',
+        label: 'Sneak-attack the nearest enemy',
         condition: { type: 'always' },
-        actionId: 'act-shortbow',
-        target: { strategy: 'lowestHpEnemy', excludeIncapacitated: true },
+        actionId: 'act-rogue-shortbow',
+        target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
       },
     ],
   },
@@ -247,7 +310,7 @@ export const SAMPLE_PCS: Combatant[] = [
 // Sample monsters
 // ---------------------------------------------------------------------------
 
-export function makeGoblin(id: string, name: string): Combatant {
+export function makeGoblin(id: string, name: string, position = 30): Combatant {
   return {
     id,
     name,
@@ -257,21 +320,23 @@ export function makeGoblin(id: string, name: string): Combatant {
     abilityScores: { str: 8, dex: 14, con: 10, int: 10, wis: 8, cha: 8 },
     saveProficiencies: [],
     proficiencyBonus: 2,
+    position,
+    speed: 30,
     actionIds: ['act-scimitar'],
     spellSlots: {},
     script: [
       {
         priority: 1,
-        label: 'Attack lowest-HP PC',
+        label: 'Attack the nearest PC',
         condition: { type: 'always' },
         actionId: 'act-scimitar',
-        target: { strategy: 'lowestHpEnemy' },
+        target: { strategy: 'nearestEnemy' },
       },
     ],
   };
 }
 
-export function makeOrc(id: string, name: string): Combatant {
+export function makeOrc(id: string, name: string, position = 15): Combatant {
   return {
     id,
     name,
@@ -281,15 +346,17 @@ export function makeOrc(id: string, name: string): Combatant {
     abilityScores: { str: 16, dex: 12, con: 16, int: 7, wis: 11, cha: 10 },
     saveProficiencies: ['str'],
     proficiencyBonus: 2,
+    position,
+    speed: 30,
     actionIds: ['act-longsword'],
     spellSlots: {},
     script: [
       {
         priority: 1,
-        label: 'Greataxe the lowest-HP PC',
+        label: 'Attack the nearest PC',
         condition: { type: 'always' },
         actionId: 'act-longsword',
-        target: { strategy: 'lowestHpEnemy' },
+        target: { strategy: 'nearestEnemy' },
       },
     ],
   };
@@ -307,15 +374,15 @@ export function defaultScenario(): Scenario {
     makeOrc('m-orc1', 'Orc 1'),
     makeOrc('m-orc2', 'Orc 2'),
   ];
-  // give the fighter a named priority target
-  const pcs = SAMPLE_PCS.map((p) =>
-    p.id === 'pc-fighter' ? { ...p, defaultTargets: ['m-orc1', 'm-orc2'] } : p,
-  );
   return {
     name: 'Party of 4 vs 3 Goblins & 2 Orcs',
-    combatants: [...pcs, ...monsters],
+    combatants: [...SAMPLE_PCS, ...monsters],
     actions: SRD_ACTIONS,
     weapons: SRD_WEAPONS,
+    targetLists: [
+      // reusable list referenced by the fighter: focus the orcs, then nearest enemy
+      { id: 'tl-orcs-first', name: 'Orcs first', entries: ['m-orc1', 'm-orc2'], fallback: 'nearestEnemy' },
+    ],
     initiativeMode: 'rolled',
     maxRounds: 30,
   };

@@ -20,7 +20,9 @@ export type ConditionKind =
   | 'paralyzed'
   | 'frightened'
   | 'blessed' // +1d4 to attacks & saves
-  | 'dodging'; // attacks against have disadvantage
+  | 'dodging' // attacks against have disadvantage
+  | 'raging' // resistance to physical damage; powers melee rage rider
+  | 'marked'; // Hunter's Mark / Hex target; powers the marked-target rider
 
 /** How a condition's lifetime is governed. */
 export type DurationKind =
@@ -89,12 +91,41 @@ export interface Weapon {
   damageType: DamageType;
   properties: WeaponProperty[];
   category: 'simple' | 'martial';
+  /** normal range in feet (melee reach = 5). Beyond this up to longRange = disadvantage. */
+  range?: number;
+  /** long range in feet; attacks beyond normal but within long are at disadvantage. */
+  longRange?: number;
 }
 
 /** A condition to apply to a target as part of an action's effect. */
 export interface ConditionApplication {
   kind: ConditionKind;
   duration: DurationKind;
+}
+
+/** When a damage rider's bonus applies. */
+export type RiderTrigger =
+  | 'always'
+  | 'hasAdvantage' // the attack roll had advantage
+  | 'advantageOrAllyAdjacent' // advantage OR an ally is adjacent to the target (Sneak Attack)
+  | 'targetHasCondition' // the target has `condition` (Hunter's Mark / Hex)
+  | 'selfHasCondition'; // the attacker has `condition` (Rage)
+
+/** Conditional extra damage on a hit (Sneak Attack, Rage, Hunter's Mark, etc.). */
+export interface DamageRider {
+  /** human label shown in the log, e.g. "Sneak Attack". */
+  label?: string;
+  /** extra dice on a hit, e.g. "2d6". */
+  bonusDice?: string;
+  /** extra flat damage on a hit. */
+  bonusFlat?: number;
+  trigger: RiderTrigger;
+  /** condition parameter for target/self-has-condition triggers. */
+  condition?: ConditionKind;
+  /** at most once per turn (Sneak Attack). */
+  oncePerTurn?: boolean;
+  /** only applies to melee (same-block) attacks (Rage). */
+  meleeOnly?: boolean;
 }
 
 /**
@@ -154,6 +185,17 @@ export interface Action {
   // --- conditions applied on hit / failed save ---
   applyConditions?: ConditionApplication[];
 
+  // --- positioning: range & area of effect (linear, in feet) ---
+  /** explicit range in feet; overrides the weapon's range for this action. */
+  range?: number;
+  /** if set, the action affects all eligible targets within this many feet of the primary target. */
+  aoeRadius?: number;
+  /** for 'move' actions: advance toward, or retreat from, the nearest enemy. */
+  moveMode?: 'advance' | 'retreat';
+
+  // --- conditional feature riders (extra damage gated by a trigger) ---
+  riders?: DamageRider[];
+
   // --- spell economy ---
   /** Spell slot level consumed when cast. Undefined => no slot cost. */
   spellLevel?: number;
@@ -182,6 +224,7 @@ export type RuleConditionType =
   | 'roundAtLeast'
   | 'roundAtMost'
   | 'notConcentrating'
+  | 'anyEnemyConcentrating' // an enemy is concentrating (target it to break concentration)
   | 'slotAvailable'; // requires a spell slot of the action's level
 
 export interface RuleCondition {
@@ -193,25 +236,42 @@ export interface RuleCondition {
 }
 
 /**
- * Target selection for an action. A combatant references targets by named slot
- * ("enemy1", "ally2", ...) resolved against the current initiative order, with a
- * fallback strategy when named targets are gone.
+ * Target selection for an action. Prefer an explicit ordered list of combatants
+ * (a reusable TargetList or an inline `namedTargets`) with a computed `fallback`
+ * when the list is exhausted — this avoids assuming omniscient knowledge.
  */
 export type TargetStrategy =
   | 'lowestHpEnemy'
   | 'highestHpEnemy'
+  | 'nearestEnemy'
   | 'lowestHpAlly' // includes self
+  | 'nearestAlly' // includes self
   | 'self'
   | 'allEnemies'
   | 'allAllies'
-  | 'namedThenLowestHpEnemy';
+  | 'namedThenLowestHpEnemy' // legacy alias kept for back-compat
+  | 'none';
 
 export interface TargetSelector {
   strategy: TargetStrategy;
-  /** ordered named-target ids for the 'namedThen...' strategy. */
+  /** reference a reusable scenario-level TargetList by id. */
+  listId?: string;
+  /** ordered explicit combatant ids (inline list). */
   namedTargets?: string[];
+  /** computed strategy used after the explicit list is exhausted. */
+  fallback?: TargetStrategy;
   /** if true, only consider targets that are not incapacitated. */
   excludeIncapacitated?: boolean;
+}
+
+/** A reusable, named ordered list of explicit target combatants + a computed fallback. */
+export interface TargetList {
+  id: string;
+  name: string;
+  /** ordered combatant ids (priority order). */
+  entries: string[];
+  /** computed strategy used when the explicit entries are exhausted/unavailable. */
+  fallback: TargetStrategy;
 }
 
 export interface Rule {
@@ -252,6 +312,10 @@ export interface Combatant {
   spellSlots: SpellSlots;
   /** default target priority used by actions whose selector is 'namedThenLowestHpEnemy' without its own list. */
   defaultTargets?: string[];
+  /** starting position on the 1D battlefield (feet; multiples of 15). Defaults by side/index. */
+  position?: number;
+  /** movement speed in feet per turn (default 30). */
+  speed?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +331,8 @@ export interface Scenario {
   actions: Action[];
   /** shared library of weapons referenced by attack actions. */
   weapons: Weapon[];
+  /** reusable named target priority lists referenced by rules. */
+  targetLists: TargetList[];
   initiativeMode: InitiativeMode;
   /** for fixed initiative: ordered combatant ids (first acts first). */
   fixedOrder?: string[];

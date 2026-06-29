@@ -1,6 +1,6 @@
 // Resolve a chosen action against chosen targets, mutating combat state and emitting log events.
 
-import { CONDITION_CATALOG } from './conditions';
+import { CONDITION_CATALOG, resistsPhysical } from './conditions';
 import { rollD20, rollDice, type RNG, type Advantage, combineAdvantage } from './dice';
 import {
   resolveAttackProfile,
@@ -9,20 +9,24 @@ import {
   healFlat,
 } from './derive';
 import type { LogEvent } from './log';
+import { approach, effectiveRange, reposition } from './movement';
 import {
   abilityMod,
   attackAdvantage,
+  distance,
   isAlive,
   saveBonus,
   targetAdvantage,
   type CombatantState,
   type CombatState,
 } from './state';
-import type { Action, ConditionApplication } from './types';
+import type { Action, ConditionApplication, DamageType } from './types';
 
 const BLESS_BONUS = '1d4';
 
-/** Apply damage to a target, handling concentration checks and death. */
+const PHYSICAL: DamageType[] = ['bludgeoning', 'piercing', 'slashing'];
+
+/** Apply damage to a target, handling resistance, concentration checks and death. */
 function applyDamage(
   state: CombatState,
   rng: RNG,
@@ -30,8 +34,14 @@ function applyDamage(
   target: CombatantState,
   amount: number,
   events: LogEvent[],
+  damageType?: DamageType,
 ): void {
   if (amount <= 0) return;
+  // Physical resistance (e.g. Rage) halves bludgeoning/piercing/slashing damage.
+  if (damageType && PHYSICAL.includes(damageType) && resistsPhysical(target.conditions)) {
+    amount = Math.floor(amount / 2);
+    if (amount <= 0) return;
+  }
   target.hp -= amount;
   target.damageTaken += amount;
   source.damageDealt += amount;
@@ -193,25 +203,20 @@ export function performAction(
   }
 
   switch (action.kind) {
-    case 'dodge':
     case 'move': {
+      reposition(state, actor, action.moveMode ?? 'advance', events);
+      return;
+    }
+    case 'dodge': {
       // Dodge grants the dodging condition until the actor's next turn.
-      if (action.kind === 'dodge') {
-        actor.conditions.push({
-          kind: 'dodging',
-          duration: { type: 'rounds', rounds: 1 },
-        });
-      }
+      actor.conditions.push({ kind: 'dodging', duration: { type: 'rounds', rounds: 1 } });
       events.push({
         round: state.round,
         actorId: actor.base.id,
         actorName: actor.base.name,
         type: 'dodge',
         actionId: action.id,
-        message:
-          action.kind === 'dodge'
-            ? `${actor.base.name} takes the Dodge action.`
-            : `${actor.base.name} moves / repositions.`,
+        message: `${actor.base.name} takes the Dodge action.`,
       });
       return;
     }
@@ -233,6 +238,75 @@ function blessAdvantageBonus(actor: CombatantState): { bless: boolean } {
   return { bless: actor.conditions.some((c) => c.kind === 'blessed') };
 }
 
+/** Whether an ally of `actor` (not the actor) is in melee (same block) of `target`. */
+function allyAdjacentToTarget(state: CombatState, actor: CombatantState, target: CombatantState): boolean {
+  return state.combatants.some(
+    (c) => c.base.side === actor.base.side && c !== actor && isAlive(c) && distance(c, target) === 0,
+  );
+}
+
+/**
+ * Apply conditional damage riders on a hit (Sneak Attack, Rage, Hunter's Mark, etc.).
+ * Returns the total bonus damage and logs each rider that fires.
+ */
+function applyRiders(
+  state: CombatState,
+  rng: RNG,
+  actor: CombatantState,
+  target: CombatantState,
+  action: Action,
+  adv: Advantage,
+  gap: number,
+  crit: boolean,
+  events: LogEvent[],
+): number {
+  if (!action.riders?.length) return 0;
+  let total = 0;
+  for (let i = 0; i < action.riders.length; i++) {
+    const r = action.riders[i];
+    const key = `${action.id}#${i}`;
+    if (r.meleeOnly && gap > 0) continue;
+    if (r.oncePerTurn && actor.riderUsedThisTurn.has(key)) continue;
+
+    let ok = false;
+    switch (r.trigger) {
+      case 'always':
+        ok = true;
+        break;
+      case 'hasAdvantage':
+        ok = adv === 'advantage';
+        break;
+      case 'advantageOrAllyAdjacent':
+        ok = adv === 'advantage' || allyAdjacentToTarget(state, actor, target);
+        break;
+      case 'targetHasCondition':
+        ok = !!r.condition && target.conditions.some((c) => c.kind === r.condition);
+        break;
+      case 'selfHasCondition':
+        ok = !!r.condition && actor.conditions.some((c) => c.kind === r.condition);
+        break;
+    }
+    if (!ok) continue;
+
+    let bonus = r.bonusFlat ?? 0;
+    if (r.bonusDice) bonus += rollDice(rng, crit ? critDouble(r.bonusDice) : r.bonusDice).total;
+    if (bonus <= 0) continue;
+    total += bonus;
+    if (r.oncePerTurn) actor.riderUsedThisTurn.add(key);
+    events.push({
+      round: state.round,
+      actorId: actor.base.id,
+      actorName: actor.base.name,
+      type: 'attack',
+      actionId: action.id,
+      targetId: target.base.id,
+      targetName: target.base.name,
+      message: `  ↳ ${r.label ?? 'rider'}: +${bonus} damage.`,
+    });
+  }
+  return total;
+}
+
 function resolveAttack(
   state: CombatState,
   rng: RNG,
@@ -245,11 +319,39 @@ function resolveAttack(
   const weapon = action.weaponId ? state.weaponsById[action.weaponId] : undefined;
   const profile = resolveAttackProfile(actor.base, action, weapon);
   const { bless } = blessAdvantageBonus(actor);
+  const range = effectiveRange(action, weapon);
+
+  // Move into range of the primary target if needed (move + action economy).
+  if (targets[0] && targets[0] !== actor) approach(state, actor, targets[0], range, events);
 
   for (const target of targets) {
+    // Range check (after movement): out of range aborts; long range = disadvantage.
+    const gap = distance(actor, target);
+    let rangeAdv: Advantage = 'normal';
+    if (gap > range) {
+      if (weapon?.longRange && gap <= weapon.longRange) {
+        rangeAdv = 'disadvantage';
+      } else {
+        events.push({
+          round: state.round,
+          actorId: actor.base.id,
+          actorName: actor.base.name,
+          type: 'attack',
+          actionId: action.id,
+          targetId: target.base.id,
+          targetName: target.base.name,
+          message: `${actor.base.name} can't reach ${target.base.name} with ${action.name} (${gap}ft away, range ${range}ft).`,
+        });
+        continue;
+      }
+    }
+
     for (let i = 0; i < attackCount; i++) {
       if (!isAlive(target)) break;
-      const adv = combineAdvantage(attackAdvantage(actor), targetAdvantage(target));
+      const adv = combineAdvantage(
+        combineAdvantage(attackAdvantage(actor), targetAdvantage(target)),
+        rangeAdv,
+      );
       let toHit = profile.toHit;
       let blessNote = '';
       if (bless) {
@@ -274,8 +376,11 @@ function resolveAttack(
         continue;
       }
 
-      const dmg = rollDamageTotal(rng, profile.damageDice, profile.damageFlat, roll.isCrit);
-      applyDamage(state, rng, actor, target, dmg, events);
+      let dmg = rollDamageTotal(rng, profile.damageDice, profile.damageFlat, roll.isCrit);
+      // Conditional feature riders (Sneak Attack, Rage, Hunter's Mark…).
+      const riderBonus = applyRiders(state, rng, actor, target, action, adv, gap, roll.isCrit, events);
+      dmg += riderBonus;
+      applyDamage(state, rng, actor, target, dmg, events, profile.damageType);
       events.push({
         round: state.round,
         actorId: actor.base.id,
@@ -304,6 +409,40 @@ function resolveSpellOrAbility(
   targets: CombatantState[],
   events: LogEvent[],
 ): void {
+  const spellRange = effectiveRange(action, undefined);
+
+  // Move toward the primary target for touch/short-range spells.
+  if (targets[0] && targets[0] !== actor) approach(state, actor, targets[0], spellRange, events);
+
+  // Area of effect: hit everyone on the primary target's side within the radius.
+  if (action.aoeRadius && targets[0]) {
+    const center = targets[0];
+    targets = state.combatants.filter(
+      (c) =>
+        isAlive(c) &&
+        c.base.side === center.base.side &&
+        Math.abs(c.position - center.position) <= action.aoeRadius!,
+    );
+  }
+
+  // Drop targets still out of range after moving (finite-range spells only).
+  if (isFinite(spellRange)) {
+    targets = targets.filter((t) => {
+      if (t === actor || distance(actor, t) <= spellRange) return true;
+      events.push({
+        round: state.round,
+        actorId: actor.base.id,
+        actorName: actor.base.name,
+        type: 'spell',
+        actionId: action.id,
+        targetId: t.base.id,
+        targetName: t.base.name,
+        message: `${actor.base.name} can't reach ${t.base.name} with ${action.name} (out of range).`,
+      });
+      return false;
+    });
+  }
+
   // Healing
   if (action.heal) {
     const flat = healFlat(actor.base, action);
@@ -364,7 +503,7 @@ function resolveSpellOrAbility(
       if (action.damage) {
         dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, false);
         if (saved) dmg = action.save.onSuccess === 'half' ? Math.floor(dmg / 2) : 0;
-        applyDamage(state, rng, actor, target, dmg, events);
+        applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
       if (!saved && action.applyConditions?.length) {
         applyConditionsTo(target, actor, action.applyConditions, state, events);
@@ -392,7 +531,7 @@ function resolveSpellOrAbility(
       let dmg = 0;
       if (hit) {
         dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, roll.isCrit);
-        applyDamage(state, rng, actor, target, dmg, events);
+        applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
         if (action.applyConditions?.length) {
           applyConditionsTo(target, actor, action.applyConditions, state, events);
         }
@@ -415,7 +554,7 @@ function resolveSpellOrAbility(
       let dmg = 0;
       if (action.damage) {
         dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, false);
-        applyDamage(state, rng, actor, target, dmg, events);
+        applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
       if (action.applyConditions?.length) {
         applyConditionsTo(target, actor, action.applyConditions, state, events);

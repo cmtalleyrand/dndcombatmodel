@@ -14,6 +14,8 @@ export interface ConditionMeta {
   attackAgainstAdvantage?: Advantage;
   /** automatically fails saving throws of these abilities. */
   autoFailSaves?: Ability[];
+  /** halves bludgeoning/piercing/slashing damage taken (Rage). */
+  resistPhysical?: boolean;
   description: string;
 }
 
@@ -103,7 +105,25 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
     attackAgainstAdvantage: 'disadvantage',
     description: 'Attacks against have disadvantage; advantage on Dex saves.',
   },
+  raging: {
+    kind: 'raging',
+    label: 'Raging',
+    incapacitated: false,
+    resistPhysical: true,
+    description: 'Resistance to bludgeoning/piercing/slashing; bonus melee damage.',
+  },
+  marked: {
+    kind: 'marked',
+    label: 'Marked',
+    incapacitated: false,
+    description: "Hunter's Mark / Hex: attackers deal bonus dice against this target.",
+  },
 };
+
+/** Whether the combatant resists physical damage (e.g. while raging). */
+export function resistsPhysical(conditions: ConditionInstance[]): boolean {
+  return conditions.some((c) => CONDITION_CATALOG[c.kind].resistPhysical);
+}
 
 /** Whether a set of conditions renders a combatant unable to act. */
 export function isIncapacitated(conditions: ConditionInstance[]): boolean {

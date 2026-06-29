@@ -52,6 +52,7 @@ function baseScenario(over: Partial<Scenario> = {}): Scenario {
     combatants: [fighter('pc1', 'pc'), fighter('m1', 'monster')],
     actions: [sword],
     weapons: [],
+    targetLists: [],
     initiativeMode: 'rolled',
     maxRounds: 50,
     ...over,
