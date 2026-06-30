@@ -1,141 +1,181 @@
 import { useMemo, useState } from 'react';
-import type { AIDraft } from '../state/store';
-import {
-  deleteAIDraft,
-  duplicateAIDraft,
-  genId,
-  loadAIDrafts,
-  upsertAIDraft,
-} from '../state/store';
+import type { Scenario } from '../engine/types';
+import type { AIScenarioDraft } from '../ai/types';
+import { convertDraftToScenario } from '../ai/convertDraftToScenario';
+import { formatApprovalTemplate, AI_AUTHORING_SCHEMA_PROMPT } from '../ai/schemaPrompt';
+import { validateDraft } from '../ai/validateDraft';
 
-const EMPTY_DRAFT_DATA = '{\n  "changes": []\n}';
+type Props = {
+  scenario: Scenario;
+  setScenario: (scenario: Scenario) => void;
+};
 
-export function AIAuthoringTab() {
-  const [drafts, setDrafts] = useState<AIDraft[]>(() => loadAIDrafts());
-  const [selectedId, setSelectedId] = useState('');
-  const [name, setName] = useState('Untitled AI draft');
-  const [approvalTemplate, setApprovalTemplate] = useState('Review and approve these proposed combat scenario changes.');
-  const [draftDataText, setDraftDataText] = useState(EMPTY_DRAFT_DATA);
-  const [error, setError] = useState<string | null>(null);
+const emptyDraft: AIScenarioDraft = {
+  scenarioSummary: 'AI-authored encounter draft',
+  pcs: [],
+  enemies: [],
+  actions: [],
+  priorityScripts: [],
+  targetPriorities: [],
+  assumptionsRequiringApproval: ['User must confirm that generated mechanics match the intended encounter.'],
+};
 
-  const selectedDraft = useMemo(
-    () => drafts.find((draft) => draft.id === selectedId),
-    [drafts, selectedId],
-  );
+function draftFromScenario(scenario: Scenario, prompt: string): AIScenarioDraft {
+  const actionNamesById = new Map(scenario.actions.map((action) => [action.id, action.name]));
+  const combatantNamesById = new Map(scenario.combatants.map((combatant) => [combatant.id, combatant.name]));
+  return {
+    scenarioSummary: prompt.trim() || scenario.name,
+    pcs: scenario.combatants.filter((combatant) => combatant.side === 'pc').map((combatant) => ({
+      name: combatant.name,
+      side: combatant.side,
+      maxHp: combatant.maxHp,
+      ac: combatant.ac,
+      abilityScores: combatant.abilityScores,
+      saveProficiencies: combatant.saveProficiencies,
+      proficiencyBonus: combatant.proficiencyBonus,
+      spellcastingAbility: combatant.spellcastingAbility,
+      actionNames: combatant.actionIds.map((id) => actionNamesById.get(id)).filter((name): name is string => Boolean(name)),
+      spellSlots: combatant.spellSlots,
+      position: combatant.position,
+      speed: combatant.speed,
+    })),
+    enemies: scenario.combatants.filter((combatant) => combatant.side === 'monster').map((combatant) => ({
+      name: combatant.name,
+      side: combatant.side,
+      maxHp: combatant.maxHp,
+      ac: combatant.ac,
+      abilityScores: combatant.abilityScores,
+      saveProficiencies: combatant.saveProficiencies,
+      proficiencyBonus: combatant.proficiencyBonus,
+      spellcastingAbility: combatant.spellcastingAbility,
+      actionNames: combatant.actionIds.map((id) => actionNamesById.get(id)).filter((name): name is string => Boolean(name)),
+      spellSlots: combatant.spellSlots,
+      position: combatant.position,
+      speed: combatant.speed,
+    })),
+    actions: scenario.actions,
+    priorityScripts: scenario.combatants.flatMap((combatant) => combatant.script.map((rule) => ({
+      actorName: combatant.name,
+      actionName: actionNamesById.get(rule.actionId) ?? rule.actionId,
+      priority: rule.priority,
+      label: rule.label,
+      condition: rule.condition,
+      target: {
+        strategy: rule.target.strategy,
+        targetNames: rule.target.namedTargets?.map((id) => combatantNamesById.get(id) ?? id),
+        fallback: rule.target.fallback,
+        excludeIncapacitated: rule.target.excludeIncapacitated,
+      },
+    }))),
+    targetPriorities: scenario.targetLists.map((list) => ({
+      name: list.name,
+      targetNames: list.entries.map((id) => combatantNamesById.get(id) ?? id),
+      fallback: list.fallback,
+    })),
+    assumptionsRequiringApproval: [
+      'This deterministic local draft mirrors the current simulator scenario; edit the template or JSON before applying.',
+      AI_AUTHORING_SCHEMA_PROMPT,
+    ],
+    maxRounds: scenario.maxRounds,
+  };
+}
 
-  const loadDraft = (id: string) => {
-    const draft = drafts.find((d) => d.id === id);
-    if (!draft) return;
-    setSelectedId(draft.id);
-    setName(draft.name);
-    setApprovalTemplate(draft.approvalTemplate);
-    setDraftDataText(JSON.stringify(draft.draftData, null, 2));
-    setError(null);
+export function AIAuthoringTab({ scenario, setScenario }: Props) {
+  const [prompt, setPrompt] = useState('');
+  const [draftText, setDraftText] = useState(JSON.stringify(emptyDraft, null, 2));
+  const [approvalTemplate, setApprovalTemplate] = useState(formatApprovalTemplate(emptyDraft));
+  const [message, setMessage] = useState<string | null>(null);
+
+  const parsedDraft = useMemo(() => {
+    try {
+      return JSON.parse(draftText) as AIScenarioDraft;
+    } catch {
+      return null;
+    }
+  }, [draftText]);
+
+  const errors = parsedDraft ? validateDraft(parsedDraft) : ['Draft JSON is not parseable.'];
+
+  const generateDraft = () => {
+    const next = draftFromScenario(scenario, prompt);
+    setDraftText(JSON.stringify(next, null, 2));
+    setApprovalTemplate(formatApprovalTemplate(next));
+    setMessage('Draft generated. The active scenario is unchanged until approval.');
   };
 
-  const saveDraft = () => {
+  const reviseDraft = () => {
+    if (!parsedDraft) {
+      setMessage('Cannot revise until draft JSON is valid.');
+      return;
+    }
+    const next = {
+      ...parsedDraft,
+      scenarioSummary: prompt.trim() || parsedDraft.scenarioSummary,
+      assumptionsRequiringApproval: [...parsedDraft.assumptionsRequiringApproval, 'User requested revision before approval.'],
+    };
+    setDraftText(JSON.stringify(next, null, 2));
+    setApprovalTemplate(formatApprovalTemplate(next));
+    setMessage('Draft revised. Review the approval template before applying.');
+  };
+
+  const approve = () => {
+    if (!parsedDraft) {
+      setMessage('Cannot apply invalid JSON.');
+      return;
+    }
     try {
-      const draftData = JSON.parse(draftDataText) as AIDraft['draftData'];
-      const now = new Date().toISOString();
-      const draft: AIDraft = {
-        id: selectedDraft?.id ?? genId('draft'),
-        name: name.trim() || 'Untitled AI draft',
-        created: selectedDraft?.created ?? now,
-        updated: now,
-        approvalTemplate,
-        draftData,
-      };
-      const next = upsertAIDraft(draft);
-      setDrafts(next);
-      setSelectedId(draft.id);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Draft data must be valid JSON.');
+      setScenario(convertDraftToScenario(parsedDraft));
+      setMessage('Approved draft applied to the scenario.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Draft validation failed.');
     }
   };
 
-  const newDraft = () => {
-    setSelectedId('');
-    setName('Untitled AI draft');
-    setApprovalTemplate('Review and approve these proposed combat scenario changes.');
-    setDraftDataText(EMPTY_DRAFT_DATA);
-    setError(null);
+  const discard = () => {
+    setDraftText(JSON.stringify(emptyDraft, null, 2));
+    setApprovalTemplate(formatApprovalTemplate(emptyDraft));
+    setMessage('Draft discarded. The active scenario was not changed.');
   };
 
   return (
     <div className="panel">
       <div className="row spread">
         <div>
-          <h2>AI Authoring Drafts</h2>
-          <div className="muted">Save reusable AI-generated drafts separately from scenario JSON.</div>
+          <h2>AI Authoring</h2>
+          <div className="muted">Describe an encounter, review a typed draft, then approve it into simulator state.</div>
         </div>
-        <div className="row">
-          <button className="secondary" onClick={newDraft}>New draft</button>
-          <button onClick={saveDraft}>Save current draft</button>
-        </div>
+        <span className="tag">Scenario changes only on approval</span>
       </div>
 
-      <div className="row" style={{ alignItems: 'flex-end', marginTop: '0.75rem' }}>
-        <label>
-          Saved drafts
-          <select value={selectedId} onChange={(e) => loadDraft(e.target.value)}>
-            <option value="">Choose a saved draft</option>
-            {drafts.map((draft) => (
-              <option key={draft.id} value={draft.id}>{draft.name}</option>
-            ))}
-          </select>
-        </label>
-        <button className="secondary" disabled={!selectedId} onClick={() => loadDraft(selectedId)}>
-          Load
-        </button>
-        <button
-          className="secondary"
-          disabled={!selectedId}
-          onClick={() => {
-            const next = duplicateAIDraft(selectedId);
-            setDrafts(next);
-            const copy = next[next.length - 1];
-            if (copy) {
-              setSelectedId(copy.id);
-              setName(copy.name);
-              setApprovalTemplate(copy.approvalTemplate);
-              setDraftDataText(JSON.stringify(copy.draftData, null, 2));
-              setError(null);
-            }
-          }}
-        >
-          Duplicate
-        </button>
-        <button
-          className="danger"
-          disabled={!selectedId}
-          onClick={() => {
-            const next = deleteAIDraft(selectedId);
-            setDrafts(next);
-            newDraft();
-          }}
-        >
-          Delete
-        </button>
-      </div>
-
-      <div className="card" style={{ marginTop: '0.75rem' }}>
-        <div className="row">
-          <label style={{ flex: '1 1 16rem' }}>
-            Draft name
-            <input value={name} onChange={(e) => setName(e.target.value)} />
+      <div className="grid-2" style={{ marginTop: '1rem' }}>
+        <div className="card">
+          <h3>Chat-style prompt</h3>
+          <label style={{ width: '100%' }}>
+            Describe PCs, enemies, spells, actions, scripts, positioning, and goals
+            <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Example: Four level-3 PCs ambush two ogres at 60 feet. Wizard prioritizes Sleep, fighter protects the cleric..." />
           </label>
-          {selectedDraft && <span className="tag">Updated {new Date(selectedDraft.updated).toLocaleString()}</span>}
+          <div className="row" style={{ marginTop: '0.75rem' }}>
+            <button onClick={generateDraft}>Generate draft</button>
+            <button className="secondary" onClick={reviseDraft}>Revise draft</button>
+            <button disabled={errors.length > 0} onClick={approve}>Approve and apply</button>
+            <button className="danger" onClick={discard}>Discard draft</button>
+          </div>
+          {message && <div className="muted" style={{ marginTop: '0.75rem', whiteSpace: 'pre-wrap' }}>{message}</div>}
         </div>
-        <label style={{ marginTop: '0.5rem', width: '100%' }}>
-          Readable approval template
-          <textarea value={approvalTemplate} onChange={(e) => setApprovalTemplate(e.target.value)} />
-        </label>
-        <label style={{ marginTop: '0.5rem', width: '100%' }}>
-          Machine-readable draft data (JSON)
-          <textarea value={draftDataText} onChange={(e) => setDraftDataText(e.target.value)} />
-        </label>
-        {error && <div style={{ color: 'var(--monster)' }}>{error}</div>}
+
+        <div className="card">
+          <h3>Editable approval template</h3>
+          <textarea value={approvalTemplate} onChange={(event) => setApprovalTemplate(event.target.value)} style={{ minHeight: '18rem' }} />
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: '1rem' }}>
+        <div className="row spread">
+          <h3>Typed draft data</h3>
+          <span className={errors.length === 0 ? 'tag' : 'tag'}>{errors.length === 0 ? 'Valid' : `${errors.length} issue(s)`}</span>
+        </div>
+        <textarea value={draftText} onChange={(event) => setDraftText(event.target.value)} style={{ minHeight: '22rem' }} />
+        {errors.length > 0 && <pre style={{ color: 'var(--monster-soft)', whiteSpace: 'pre-wrap' }}>{errors.join('\n')}</pre>}
       </div>
     </div>
   );
