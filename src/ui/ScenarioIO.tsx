@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import type { Scenario } from '../engine/types';
 import { exportFullBundle, exportScenario, importFullBundle, importScenario } from '../state/store';
+import { Menu, MenuItem } from './Menu';
+import { LoadIcon, ResetIcon, SaveIcon } from './icons';
 
 interface Props {
   scenario: Scenario;
@@ -55,20 +57,30 @@ export function ScenarioIO({ scenario, setScenario, onReset }: Props) {
 
   return (
     <div className="row" style={{ alignItems: 'flex-start' }}>
-      <button className="secondary" onClick={exportCurrentScenario}>
-        ⬇ Export current scenario
-      </button>
-      <button className="secondary" onClick={() => chooseImport('scenario')}>
-        ⬆ Import scenario
-      </button>
-      <button className="secondary" onClick={exportBundle}>
-        ⬇ Export full bundle
-      </button>
-      <button className="secondary" onClick={() => chooseImport('bundle')}>
-        ⬆ Import full bundle
-      </button>
-      <button className="ghost" onClick={onReset}>
-        ↺ Reset to sample
+      <Menu
+        className="secondary"
+        label={
+          <>
+            <SaveIcon size={14} /> Save
+          </>
+        }
+      >
+        <MenuItem onClick={exportCurrentScenario}>Export current scenario</MenuItem>
+        <MenuItem onClick={exportBundle}>Export full bundle (scenario + AI drafts)</MenuItem>
+      </Menu>
+      <Menu
+        className="secondary"
+        label={
+          <>
+            <LoadIcon size={14} /> Load
+          </>
+        }
+      >
+        <MenuItem onClick={() => chooseImport('scenario')}>Import scenario</MenuItem>
+        <MenuItem onClick={() => chooseImport('bundle')}>Import full bundle</MenuItem>
+      </Menu>
+      <button className="ghost icon-only" onClick={onReset} title="Reset to sample scenario" aria-label="Reset to sample scenario">
+        <ResetIcon size={15} />
       </button>
       <input
         ref={fileRef}
@@ -81,7 +93,7 @@ export function ScenarioIO({ scenario, setScenario, onReset }: Props) {
           e.target.value = '';
         }}
       />
-      {error && <div style={{ color: 'var(--monster)' }}>{error}</div>}
+      {error && <div style={{ color: 'var(--danger-soft)' }}>{error}</div>}
     </div>
   );
 }

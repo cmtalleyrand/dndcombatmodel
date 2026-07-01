@@ -1,6 +1,7 @@
 import type { Scenario } from '../engine/types';
 import type { AggregateStats } from '../engine/statistics';
 import { CombatReplay } from './CombatReplay';
+import { InfoHint } from './InfoHint';
 
 interface Props {
   scenario: Scenario;
@@ -15,13 +16,15 @@ export function ReplayTab({ scenario, stats, onGoToRun }: Props) {
   return (
     <div className="panel">
       <div className="row spread">
-        <h2>Combat Replay</h2>
+        <h2>
+          Combat Replay
+          <InfoHint>
+            A turn-by-turn animation of one representative run on the linear battlefield. Tokens
+            slide as combatants move; health bars fall as blows land.
+          </InfoHint>
+        </h2>
         {hasReplay && <span className="tag">representative simulation</span>}
       </div>
-      <p className="help">
-        A turn-by-turn animation of one representative run on the linear battlefield.
-        Tokens slide as combatants move; health bars fall as blows land.
-      </p>
 
       {hasReplay ? (
         <CombatReplay

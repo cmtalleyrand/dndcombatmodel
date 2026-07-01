@@ -83,7 +83,10 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
         return (
           <div className="rule" key={idx}>
             <div className="row spread">
-              <strong>Priority {rule.priority}</strong>
+              <div className="row" style={{ gap: '0.5rem' }}>
+                <span className="priority-badge">{rule.priority}</span>
+                {rule.label && <span className="muted">{rule.label}</span>}
+              </div>
               <div className="row">
                 <button className="ghost mini" onClick={() => move(idx, -1)} disabled={idx === 0}>↑</button>
                 <button className="ghost mini" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1}>↓</button>
