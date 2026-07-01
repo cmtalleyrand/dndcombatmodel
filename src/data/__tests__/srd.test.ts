@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { defaultScenario, SRD_ACTIONS, SAMPLE_PCS } from '../srd';
+import { defaultScenario, DEFAULT_CONDITION_LIBRARY, DEFAULT_RULE_LIBRARY, SRD_ACTIONS, SAMPLE_PCS } from '../srd';
+import { CONDITION_KINDS } from '../../engine/conditions';
 import { runMany } from '../../engine/statistics';
 
 describe('default scenario', () => {
@@ -34,5 +35,39 @@ describe('default scenario', () => {
       expect(names).toContain(id);
     }
     expect(SAMPLE_PCS.length).toBe(4);
+  });
+
+  it('is prestocked with a rules library and a conditions library', () => {
+    const s = defaultScenario();
+    expect(s.ruleLibrary.length).toBeGreaterThan(0);
+    expect(s.conditionLibrary.length).toBeGreaterThan(0);
+    expect(s.ruleLibrary).toBe(DEFAULT_RULE_LIBRARY);
+    expect(s.conditionLibrary).toBe(DEFAULT_CONDITION_LIBRARY);
+  });
+
+  it('every rule template references a real action and has a unique id/name', () => {
+    const actionIds = new Set(SRD_ACTIONS.map((a) => a.id));
+    const ids = new Set<string>();
+    const names = new Set<string>();
+    for (const t of DEFAULT_RULE_LIBRARY) {
+      expect(actionIds.has(t.actionId)).toBe(true);
+      expect(ids.has(t.id)).toBe(false);
+      expect(names.has(t.name)).toBe(false);
+      ids.add(t.id);
+      names.add(t.name);
+    }
+  });
+
+  it('every condition preset uses a real condition kind and has a unique id/name', () => {
+    const kinds = new Set(CONDITION_KINDS);
+    const ids = new Set<string>();
+    const names = new Set<string>();
+    for (const p of DEFAULT_CONDITION_LIBRARY) {
+      expect(kinds.has(p.kind)).toBe(true);
+      expect(ids.has(p.id)).toBe(false);
+      expect(names.has(p.name)).toBe(false);
+      ids.add(p.id);
+      names.add(p.name);
+    }
   });
 });

@@ -26,6 +26,8 @@ function scenario(combatants: Combatant[]): Scenario {
     actions: [],
     weapons: [],
     targetLists: [],
+    ruleLibrary: [],
+    conditionLibrary: [],
     initiativeMode: 'fixed',
     fixedOrder: combatants.map((c) => c.id),
     maxRounds: 10,

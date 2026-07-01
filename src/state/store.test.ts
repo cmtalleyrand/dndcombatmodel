@@ -1,6 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { defaultScenario } from '../data/srd';
-import { AI_DRAFTS_KEY, exportFullBundle, importFullBundle, type AIDraft } from './store';
+import { defaultScenario, DEFAULT_CONDITION_LIBRARY, DEFAULT_RULE_LIBRARY } from '../data/srd';
+import {
+  AI_DRAFTS_KEY,
+  duplicateConditionPreset,
+  duplicateRuleTemplate,
+  exportFullBundle,
+  importFullBundle,
+  importScenario,
+  removeConditionPreset,
+  removeRuleTemplate,
+  upsertConditionPreset,
+  upsertRuleTemplate,
+  type AIDraft,
+} from './store';
 
 function installLocalStorage() {
   const data = new Map<string, string>();
@@ -65,5 +77,71 @@ describe('full bundle persistence', () => {
     expect(exported).not.toContain('apiKey');
     expect(exported).not.toContain('api_key');
     expect(exported).toContain('"keep": true');
+  });
+});
+
+describe('rules library CRUD', () => {
+  beforeEach(() => {
+    installLocalStorage();
+  });
+
+  it('upserts, duplicates, and removes rule templates', () => {
+    let scenario = defaultScenario();
+    const startCount = scenario.ruleLibrary.length;
+
+    const template = { id: 'ruletpl-test', name: 'Test rule', condition: { type: 'always' as const }, actionId: scenario.actions[0].id, target: { strategy: 'lowestHpEnemy' as const } };
+    scenario = upsertRuleTemplate(scenario, template);
+    expect(scenario.ruleLibrary).toHaveLength(startCount + 1);
+    expect(scenario.ruleLibrary.find((t) => t.id === 'ruletpl-test')).toEqual(template);
+
+    // upsert again with the same id updates in place, not appends
+    scenario = upsertRuleTemplate(scenario, { ...template, name: 'Renamed' });
+    expect(scenario.ruleLibrary).toHaveLength(startCount + 1);
+    expect(scenario.ruleLibrary.find((t) => t.id === 'ruletpl-test')?.name).toBe('Renamed');
+
+    const { scenario: withCopy, newId } = duplicateRuleTemplate(scenario, 'ruletpl-test');
+    expect(withCopy.ruleLibrary).toHaveLength(startCount + 2);
+    expect(withCopy.ruleLibrary.find((t) => t.id === newId)?.name).toBe('Renamed (copy)');
+
+    const afterRemove = removeRuleTemplate(withCopy, 'ruletpl-test');
+    expect(afterRemove.ruleLibrary.some((t) => t.id === 'ruletpl-test')).toBe(false);
+    expect(afterRemove.ruleLibrary).toHaveLength(startCount + 1);
+  });
+});
+
+describe('conditions library CRUD', () => {
+  beforeEach(() => {
+    installLocalStorage();
+  });
+
+  it('upserts, duplicates, and removes condition presets', () => {
+    let scenario = defaultScenario();
+    const startCount = scenario.conditionLibrary.length;
+
+    const preset = { id: 'condpre-test', name: 'Test preset', kind: 'prone' as const, duration: { type: 'rounds' as const, rounds: 2 } };
+    scenario = upsertConditionPreset(scenario, preset);
+    expect(scenario.conditionLibrary).toHaveLength(startCount + 1);
+    expect(scenario.conditionLibrary.find((p) => p.id === 'condpre-test')).toEqual(preset);
+
+    const { scenario: withCopy, newId } = duplicateConditionPreset(scenario, 'condpre-test');
+    expect(withCopy.conditionLibrary).toHaveLength(startCount + 2);
+    expect(withCopy.conditionLibrary.find((p) => p.id === newId)?.name).toBe('Test preset (copy)');
+
+    const afterRemove = removeConditionPreset(withCopy, 'condpre-test');
+    expect(afterRemove.conditionLibrary.some((p) => p.id === 'condpre-test')).toBe(false);
+    expect(afterRemove.conditionLibrary).toHaveLength(startCount + 1);
+  });
+});
+
+describe('back-compat: importing an old scenario without library fields', () => {
+  it('prestocks both libraries with the defaults', () => {
+    const s = defaultScenario();
+    const { ruleLibrary, conditionLibrary, ...withoutLibraries } = s;
+    void ruleLibrary;
+    void conditionLibrary;
+
+    const imported = importScenario(JSON.stringify(withoutLibraries));
+    expect(imported.ruleLibrary).toEqual(DEFAULT_RULE_LIBRARY);
+    expect(imported.conditionLibrary).toEqual(DEFAULT_CONDITION_LIBRARY);
   });
 });
