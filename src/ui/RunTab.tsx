@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Scenario } from '../engine/types';
 import { runMany, type AggregateStats } from '../engine/statistics';
 import { Results } from './Results';
+import { InfoHint } from './InfoHint';
 
 interface Props {
   scenario: Scenario;
@@ -34,7 +35,13 @@ export function RunTab({ scenario, stats, onResults }: Props) {
   return (
     <div>
       <div className="panel">
-        <h2>Run Simulations</h2>
+        <h2>
+          Run Simulations
+          <InfoHint>
+            Runs are reproducible: the same seed + scenario always yields the same results.
+            Increase the count for tighter averages.
+          </InfoHint>
+        </h2>
         <div className="row">
           <label>
             Simulations
@@ -54,14 +61,10 @@ export function RunTab({ scenario, stats, onResults }: Props) {
           )}
         </div>
         {!canRun && (
-          <p className="help" style={{ color: 'var(--accent-2)' }}>
+          <p className="help" style={{ color: 'var(--warning-soft)' }}>
             ⚠ You need at least one PC and one monster to run a simulation.
           </p>
         )}
-        <p className="help">
-          Runs are reproducible: the same seed + scenario always yields the same results. Increase
-          the count for tighter averages.
-        </p>
       </div>
 
       {stats && <Results stats={stats} scenario={scenario} />}

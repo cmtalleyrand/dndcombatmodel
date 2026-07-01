@@ -34,6 +34,8 @@ import {
 import { CONDITION_CATALOG, CONDITION_KINDS } from '../engine/conditions';
 import { CONDITION_TYPES, defaultCondition, describeCondition, describeTarget, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
 import { describeActionGeneric } from './describe';
+import { InfoHint } from './InfoHint';
+import { ScrollIcon, TrashIcon, pickActionIcon, pickWeaponIcon } from './icons';
 
 interface Props {
   scenario: Scenario;
@@ -81,66 +83,78 @@ export function ActionLibraryTab({ scenario, setScenario }: Props) {
 
       <div className="panel">
         <div className="row spread">
-          <h2>Action Library</h2>
+          <h2>
+            Action Library
+            <InfoHint>
+              Reusable attacks, spells and abilities. Weapon attacks and spells derive their
+              numbers from whoever uses them; the adjustments below add on top. Duplicate an
+              action to make an edited variant.
+            </InfoHint>
+          </h2>
           <button onClick={add}>+ Add Action</button>
         </div>
-        <p className="help">
-          Reusable attacks, spells and abilities. Weapon attacks and spells derive their numbers
-          from whoever uses them; the adjustments below add on top. Duplicate an action to make an
-          edited variant.
-        </p>
       </div>
 
-      {scenario.actions.map((a) => {
-        const usedBy = used(a.id);
-        const builtin = a.id === 'act-dodge' || a.id === 'act-move';
-        return (
-          <div className="card" key={a.id}>
-            <div className="row spread">
-              <div className="row">
-                <strong>{a.name}</strong>
-                <span className="tag">{a.kind}</span>
-                {a.spellLevel ? <span className="tag">L{a.spellLevel} slot</span> : null}
-                {a.concentration ? <span className="tag">concentration</span> : null}
-                <span className="tag">used by {usedBy.length}</span>
-              </div>
-              <div className="row">
-                <button className="secondary mini" onClick={() => setOpenId(openId === a.id ? null : a.id)}>
-                  {openId === a.id ? 'Collapse' : 'Edit'}
-                </button>
-                {!builtin && (
-                  <button
-                    className="secondary mini"
-                    onClick={() => {
-                      const { scenario: next, newId } = duplicateAction(scenario, a.id);
-                      setScenario(next);
-                      setOpenId(newId);
-                    }}
-                  >
-                    ⧉ Duplicate
+      <div className="card-grid">
+        {scenario.actions.map((a) => {
+          const usedBy = used(a.id);
+          const builtin = a.id === 'act-dodge' || a.id === 'act-move';
+          const { Icon, color } = pickActionIcon(a.kind);
+          return (
+            <div className="card" key={a.id}>
+              <div className="card-head">
+                <div className="card-head-main">
+                  <div className="card-icon" style={{ color }}>
+                    <Icon size={18} />
+                  </div>
+                  <div className="card-title">
+                    <strong>{a.name}</strong>
+                    <div className="card-subtitle">{a.kind}</div>
+                  </div>
+                </div>
+                <div className="card-stats">
+                  {a.spellLevel ? <span className="tag">L{a.spellLevel} slot</span> : null}
+                  {a.concentration ? <span className="tag">concentration</span> : null}
+                  <span className="tag">used by {usedBy.length}</span>
+                </div>
+                <div className="row">
+                  <button className="secondary mini" onClick={() => setOpenId(openId === a.id ? null : a.id)}>
+                    {openId === a.id ? 'Collapse' : 'Edit'}
                   </button>
-                )}
-                <button className="danger mini" disabled={builtin} onClick={() => setScenario(removeAction(scenario, a.id))}>
-                  Delete
-                </button>
+                  {!builtin && (
+                    <button
+                      className="secondary mini"
+                      onClick={() => {
+                        const { scenario: next, newId } = duplicateAction(scenario, a.id);
+                        setScenario(next);
+                        setOpenId(newId);
+                      }}
+                    >
+                      ⧉ Duplicate
+                    </button>
+                  )}
+                  <button className="danger mini icon-only" disabled={builtin} onClick={() => setScenario(removeAction(scenario, a.id))} title="Delete" aria-label="Delete">
+                    <TrashIcon size={14} />
+                  </button>
+                </div>
               </div>
+              {!builtin && (
+                <div className="derived" style={{ marginTop: '0.4rem' }}>
+                  {describeActionGeneric(a, weaponsById)}
+                </div>
+              )}
+              {openId === a.id && (
+                <ActionEditor
+                  action={a}
+                  weapons={scenario.weapons}
+                  conditionLibrary={scenario.conditionLibrary}
+                  onChange={(next) => setScenario(upsertAction(scenario, next))}
+                />
+              )}
             </div>
-            {!builtin && (
-              <div className="derived" style={{ marginTop: '0.4rem' }}>
-                {describeActionGeneric(a, weaponsById)}
-              </div>
-            )}
-            {openId === a.id && (
-              <ActionEditor
-                action={a}
-                weapons={scenario.weapons}
-                conditionLibrary={scenario.conditionLibrary}
-                onChange={(next) => setScenario(upsertAction(scenario, next))}
-              />
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -557,32 +571,52 @@ function WeaponsSection({ scenario, setScenario }: Props) {
   return (
     <div className="panel">
       <div className="row spread">
-        <h2>Weapons {open ? '' : `(${scenario.weapons.length})`}</h2>
+        <h2>
+          Weapons {open ? '' : `(${scenario.weapons.length})`}
+          {open && (
+            <InfoHint>
+              Weapons supply the damage die, type, and properties (finesse, ranged, versatile…).
+              Attack actions reference a weapon; the wielder's ability mod and proficiency are
+              applied automatically.
+            </InfoHint>
+          )}
+        </h2>
         <div className="row">
           <button className="secondary mini" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Show'}</button>
           {open && <button className="mini" onClick={add}>+ Add Weapon</button>}
         </div>
       </div>
       {open && (
-        <>
-          <p className="help">Weapons supply the damage die, type, and properties (finesse, ranged, versatile…). Attack actions reference a weapon; the wielder's ability mod and proficiency are applied automatically.</p>
-          {scenario.weapons.map((w) => (
-            <div className="card" key={w.id} style={{ marginBottom: '0.5rem' }}>
-              <div className="row spread">
-                <div className="row">
-                  <strong>{w.name}</strong>
-                  <span className="tag">{w.damage}{w.versatileDamage ? `/${w.versatileDamage}` : ''} {w.damageType}</span>
-                  {w.properties.map((p) => <span className="tag" key={p}>{p}</span>)}
+        <div className="card-grid">
+          {scenario.weapons.map((w) => {
+            const Icon = pickWeaponIcon(w);
+            return (
+              <div className="card" key={w.id}>
+                <div className="card-head">
+                  <div className="card-head-main">
+                    <div className="card-icon">
+                      <Icon size={17} />
+                    </div>
+                    <div className="card-title">
+                      <strong>{w.name}</strong>
+                    </div>
+                  </div>
+                  <div className="card-stats">
+                    <span className="tag">{w.damage}{w.versatileDamage ? `/${w.versatileDamage}` : ''} {w.damageType}</span>
+                    {w.properties.map((p) => <span className="tag" key={p}>{p}</span>)}
+                  </div>
+                  <div className="row">
+                    <button className="secondary mini" onClick={() => setEditId(editId === w.id ? null : w.id)}>{editId === w.id ? 'Collapse' : 'Edit'}</button>
+                    <button className="danger mini icon-only" onClick={() => setScenario(removeWeapon(scenario, w.id))} title="Delete" aria-label="Delete">
+                      <TrashIcon size={14} />
+                    </button>
+                  </div>
                 </div>
-                <div className="row">
-                  <button className="secondary mini" onClick={() => setEditId(editId === w.id ? null : w.id)}>{editId === w.id ? 'Collapse' : 'Edit'}</button>
-                  <button className="danger mini" onClick={() => setScenario(removeWeapon(scenario, w.id))}>Delete</button>
-                </div>
+                {editId === w.id && <WeaponEditor weapon={w} onChange={(n) => setScenario(upsertWeapon(scenario, n))} />}
               </div>
-              {editId === w.id && <WeaponEditor weapon={w} onChange={(n) => setScenario(upsertWeapon(scenario, n))} />}
-            </div>
-          ))}
-        </>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -657,7 +691,16 @@ function TargetListsSection({ scenario, setScenario }: Props) {
   return (
     <div className="panel">
       <div className="row spread">
-        <h2>Target Lists {open ? '' : `(${scenario.targetLists.length})`}</h2>
+        <h2>
+          Target Lists {open ? '' : `(${scenario.targetLists.length})`}
+          {open && (
+            <InfoHint>
+              Reusable, explicit target priority lists referenced by rules (e.g. "enemy1 → enemy2
+              → then nearest"). The combatant doesn't need omniscient knowledge — it works down
+              the list, then uses the fallback.
+            </InfoHint>
+          )}
+        </h2>
         <div className="row">
           <button className="secondary mini" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Show'}</button>
           {open && <button className="mini" onClick={add}>+ Add List</button>}
@@ -665,11 +708,6 @@ function TargetListsSection({ scenario, setScenario }: Props) {
       </div>
       {open && (
         <>
-          <p className="help">
-            Reusable, explicit target priority lists referenced by rules (e.g. "enemy1 → enemy2 →
-            then nearest"). The combatant doesn't need omniscient knowledge — it works down the list,
-            then uses the fallback.
-          </p>
           {scenario.targetLists.map((tl) => (
             <div className="card" key={tl.id} style={{ marginBottom: '0.5rem' }}>
               <div className="field-row">
@@ -733,24 +771,36 @@ function RulesLibrarySection({ scenario, setScenario }: Props) {
   return (
     <div className="panel">
       <div className="row spread">
-        <h2>Rules Library {open ? '' : `(${scenario.ruleLibrary.length})`}</h2>
+        <h2>
+          Rules Library {open ? '' : `(${scenario.ruleLibrary.length})`}
+          {open && (
+            <InfoHint>
+              Reusable tactical "recipes" — a condition, an action, and a targeting strategy —
+              that you can insert into any combatant's priority script from the Rules Library
+              picker there. Inserting copies the recipe; editing a combatant's rule afterward
+              doesn't change the template.
+            </InfoHint>
+          )}
+        </h2>
         <div className="row">
           <button className="secondary mini" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Show'}</button>
           {open && <button className="mini" onClick={add}>+ Add Rule Template</button>}
         </div>
       </div>
       {open && (
-        <>
-          <p className="help">
-            Reusable tactical "recipes" — a condition, an action, and a targeting strategy — that you
-            can insert into any combatant's priority script from the Rules Library picker there.
-            Inserting copies the recipe; editing a combatant's rule afterward doesn't change the template.
-          </p>
+        <div className="card-grid">
           {scenario.ruleLibrary.map((t) => (
-            <div className="card" key={t.id} style={{ marginBottom: '0.5rem' }}>
-              <div className="row spread">
-                <div className="row">
-                  <strong>{t.name}</strong>
+            <div className="card" key={t.id}>
+              <div className="card-head">
+                <div className="card-head-main">
+                  <div className="card-icon">
+                    <ScrollIcon size={17} />
+                  </div>
+                  <div className="card-title">
+                    <strong>{t.name}</strong>
+                  </div>
+                </div>
+                <div className="card-stats">
                   <span className="tag">{describeCondition(t.condition)}</span>
                   <span className="tag">{describeTarget(t.target)}</span>
                 </div>
@@ -768,7 +818,9 @@ function RulesLibrarySection({ scenario, setScenario }: Props) {
                   >
                     ⧉ Duplicate
                   </button>
-                  <button className="danger mini" onClick={() => setScenario(removeRuleTemplate(scenario, t.id))}>Delete</button>
+                  <button className="danger mini icon-only" onClick={() => setScenario(removeRuleTemplate(scenario, t.id))} title="Delete" aria-label="Delete">
+                    <TrashIcon size={14} />
+                  </button>
                 </div>
               </div>
               {editId === t.id && (
@@ -780,7 +832,7 @@ function RulesLibrarySection({ scenario, setScenario }: Props) {
               )}
             </div>
           ))}
-        </>
+        </div>
       )}
     </div>
   );
@@ -903,24 +955,35 @@ function ConditionsLibrarySection({ scenario, setScenario }: Props) {
   return (
     <div className="panel">
       <div className="row spread">
-        <h2>Conditions Library {open ? '' : `(${scenario.conditionLibrary.length})`}</h2>
+        <h2>
+          Conditions Library {open ? '' : `(${scenario.conditionLibrary.length})`}
+          {open && (
+            <InfoHint>
+              Reusable "apply this condition" recipes — a condition kind plus a duration — that
+              you can add to any action's on-hit / failed-save conditions from the picker there,
+              instead of reconfiguring the same kind and duration every time.
+            </InfoHint>
+          )}
+        </h2>
         <div className="row">
           <button className="secondary mini" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Show'}</button>
           {open && <button className="mini" onClick={add}>+ Add Condition Preset</button>}
         </div>
       </div>
       {open && (
-        <>
-          <p className="help">
-            Reusable "apply this condition" recipes — a condition kind plus a duration — that you can
-            add to any action's on-hit / failed-save conditions from the picker there, instead of
-            reconfiguring the same kind and duration every time.
-          </p>
+        <div className="card-grid">
           {scenario.conditionLibrary.map((p) => (
-            <div className="card" key={p.id} style={{ marginBottom: '0.5rem' }}>
-              <div className="row spread">
-                <div className="row">
-                  <strong>{p.name}</strong>
+            <div className="card" key={p.id}>
+              <div className="card-head">
+                <div className="card-head-main">
+                  <div className="card-icon">
+                    <ScrollIcon size={17} />
+                  </div>
+                  <div className="card-title">
+                    <strong>{p.name}</strong>
+                  </div>
+                </div>
+                <div className="card-stats">
                   <span className="tag">{CONDITION_CATALOG[p.kind].label}</span>
                   <span className="tag">{describeDuration(p.duration)}</span>
                 </div>
@@ -938,7 +1001,9 @@ function ConditionsLibrarySection({ scenario, setScenario }: Props) {
                   >
                     ⧉ Duplicate
                   </button>
-                  <button className="danger mini" onClick={() => setScenario(removeConditionPreset(scenario, p.id))}>Delete</button>
+                  <button className="danger mini icon-only" onClick={() => setScenario(removeConditionPreset(scenario, p.id))} title="Delete" aria-label="Delete">
+                    <TrashIcon size={14} />
+                  </button>
                 </div>
               </div>
               {editId === p.id && (
@@ -946,7 +1011,7 @@ function ConditionsLibrarySection({ scenario, setScenario }: Props) {
               )}
             </div>
           ))}
-        </>
+        </div>
       )}
     </div>
   );

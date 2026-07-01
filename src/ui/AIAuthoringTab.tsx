@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Scenario } from '../engine/types';
+import { InfoHint } from './InfoHint';
 import type { AIScenarioDraft } from '../ai/types';
 import { convertDraftToScenario } from '../ai/convertDraftToScenario';
 import {
@@ -247,11 +248,14 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
       </div>
 
       <div className="section">
-        <div className="section-title">AI Provider</div>
-        <p className="help">
-          Bring your own API key. It's stored only in this browser's local storage, sent directly to the chosen
-          provider when you generate or revise a draft, and is never included in scenario or bundle exports.
-        </p>
+        <div className="section-title">
+          AI Provider
+          <InfoHint>
+            Bring your own API key. It's stored only in this browser's local storage, sent
+            directly to the chosen provider when you generate or revise a draft, and is never
+            included in scenario or bundle exports.
+          </InfoHint>
+        </div>
         <div className="field-row">
           <label>
             Provider
@@ -348,10 +352,15 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
       <div className="card" style={{ marginTop: '1rem' }}>
         <div className="row spread">
           <h3>Typed draft data</h3>
-          <span className={errors.length === 0 ? 'tag' : 'tag'}>{errors.length === 0 ? 'Valid' : `${errors.length} issue(s)`}</span>
+          <span
+            className="tag"
+            style={errors.length === 0 ? { color: 'var(--good)', borderColor: 'var(--good)' } : { color: 'var(--danger-soft)', borderColor: 'var(--danger)' }}
+          >
+            {errors.length === 0 ? 'Valid' : `${errors.length} issue(s)`}
+          </span>
         </div>
         <textarea value={draftText} onChange={(event) => setDraftText(event.target.value)} style={{ minHeight: '22rem' }} />
-        {errors.length > 0 && <pre style={{ color: 'var(--monster-soft)', whiteSpace: 'pre-wrap' }}>{errors.join('\n')}</pre>}
+        {errors.length > 0 && <pre style={{ color: 'var(--danger-soft)', whiteSpace: 'pre-wrap' }}>{errors.join('\n')}</pre>}
       </div>
     </div>
   );
