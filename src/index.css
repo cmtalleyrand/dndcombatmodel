@@ -300,6 +300,10 @@ input.num {
   width: 4.25rem;
 }
 
+input.model-id {
+  width: 11rem;
+}
+
 input.short {
   width: 7.5rem;
 }
