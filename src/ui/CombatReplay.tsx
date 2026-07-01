@@ -16,7 +16,6 @@ const INSET = 7; // % horizontal inset so edge tokens don't clip
 const PCT_OVERLAP = 7; // tokens closer than this (% of track) stack into lanes
 const STEP_MS = 1100; // base ms per turn at 1× speed
 
-/** A single combatant token with HP bar and per-frame combat effects. */
 interface Token {
   id: string;
   name: string;
@@ -29,6 +28,46 @@ interface Token {
   dmg: number;
   heal: number;
   died: boolean;
+  active: boolean;
+  moved: boolean;
+}
+
+interface ReplayEffect {
+  key: string;
+  type: 'attack' | 'heal' | 'move';
+  fromId: string;
+  toId: string;
+  label: string;
+}
+
+interface EventEffect {
+  dmg: number;
+  heal: number;
+  died: boolean;
+}
+
+export function collectReplayEventEffects(frame: TurnFrame): Record<string, EventEffect> {
+  const fx: Record<string, EventEffect> = {};
+  for (const e of frame.events) {
+    if (!e.targetId) continue;
+    const slot = (fx[e.targetId] ??= { dmg: 0, heal: 0, died: false });
+    if (typeof e.damage === 'number') slot.dmg += e.damage;
+    if (typeof e.healing === 'number') slot.heal += e.healing;
+    if (e.type === 'death') slot.died = true;
+  }
+  return fx;
+}
+
+export function collectReplayBeams(frame: TurnFrame): ReplayEffect[] {
+  return frame.events.flatMap((e, eventIdx): ReplayEffect[] => {
+    if (e.type === 'move') return [{ key: `${frame.index}-${eventIdx}-move`, type: 'move', fromId: e.actorId, toId: e.actorId, label: 'move' }];
+    if (!e.targetId || e.targetId === e.actorId) return [];
+    if (e.type === 'heal') return [{ key: `${frame.index}-${eventIdx}-heal`, type: 'heal', fromId: e.actorId, toId: e.targetId, label: e.healing ? `+${e.healing}` : 'heal' }];
+    if (e.type === 'attack' || e.type === 'spell' || e.type === 'ability') {
+      return [{ key: `${frame.index}-${eventIdx}-attack`, type: 'attack', fromId: e.actorId, toId: e.targetId, label: e.damage ? `-${e.damage}` : e.type }];
+    }
+    return [];
+  });
 }
 
 export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
@@ -39,6 +78,7 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
 
   const last = frames.length - 1;
   const frame = frames[Math.min(idx, last)] ?? frames[0];
+  const previousFrame = frames[Math.max(0, Math.min(idx, last) - 1)] ?? frame;
   const atEnd = idx >= last;
 
   // Stable name/side lookup (snapshots carry only id/hp/position).
@@ -64,6 +104,12 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
     return { pct: (p: number) => ((p - min) / span) * 100, ticks: tickList };
   }, [frames]);
 
+  const previousPositions = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const s of previousFrame.snapshot) m[s.id] = s.position;
+    return m;
+  }, [previousFrame]);
+
   // Advance playback while playing.
   useEffect(() => {
     if (!playing) return;
@@ -79,14 +125,7 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
 
   // Build tokens for the current frame, including per-frame damage/heal/death effects.
   const tokens = useMemo<Token[]>(() => {
-    const fx: Record<string, { dmg: number; heal: number; died: boolean }> = {};
-    for (const e of frame.events) {
-      if (!e.targetId) continue;
-      const slot = (fx[e.targetId] ??= { dmg: 0, heal: 0, died: false });
-      if (typeof e.damage === 'number') slot.dmg += e.damage;
-      if (typeof e.healing === 'number') slot.heal += e.healing;
-      if (e.type === 'death') slot.died = true;
-    }
+    const fx = collectReplayEventEffects(frame);
 
     const base: Token[] = frame.snapshot.map((s) => ({
       id: s.id,
@@ -100,6 +139,8 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
       dmg: fx[s.id]?.dmg ?? 0,
       heal: fx[s.id]?.heal ?? 0,
       died: fx[s.id]?.died ?? false,
+      active: frame.actorId === s.id,
+      moved: previousPositions[s.id] !== undefined && previousPositions[s.id] !== s.position,
     }));
 
     // Greedy lane assignment per side so clustered (melee) tokens stack instead of overlapping.
@@ -115,7 +156,7 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
       }
     }
     return base;
-  }, [frame, meta, pct]);
+  }, [frame, meta, pct, previousPositions]);
 
   const pcLanes = Math.max(1, ...tokens.filter((t) => t.side === 'pc').map((t) => t.lane + 1));
   const monLanes = Math.max(1, ...tokens.filter((t) => t.side === 'monster').map((t) => t.lane + 1));
@@ -130,6 +171,13 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
 
   // map feet → horizontal % with an inset so edge tokens don't clip the stage
   const xpct = (p: number) => INSET + (pct(p) / 100) * (100 - 2 * INSET);
+  const tokenById = useMemo(() => Object.fromEntries(tokens.map((t) => [t.id, t])), [tokens]);
+  const beams = useMemo(() => collectReplayBeams(frame), [frame]);
+  const pointFor = (id: string) => {
+    const t = tokenById[id];
+    if (!t) return null;
+    return { x: xpct(t.pos), y: topFor(t) + 22 };
+  };
 
   const go = (n: number) => {
     setPlaying(false);
@@ -156,6 +204,7 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
       </div>
 
       <div className="replay-stage" style={{ height: stageH }}>
+        <div className="replay-terrain" aria-hidden="true" />
         {/* distance axis */}
         <div className="replay-axis" style={{ top: axisY }} />
         {ticks.map((ft) => (
@@ -164,13 +213,31 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
           </div>
         ))}
 
+        {beams.map((beam) => {
+          const from = pointFor(beam.fromId);
+          const to = pointFor(beam.toId);
+          if (!from || !to) return null;
+          const selfMove = beam.fromId === beam.toId;
+          const x1 = selfMove ? Math.max(INSET, from.x - 5) : from.x;
+          const x2 = selfMove ? Math.min(100 - INSET, to.x + 5) : to.x;
+          const y1 = selfMove ? from.y + 18 : from.y;
+          const y2 = selfMove ? to.y + 18 : to.y;
+          return (
+            <svg key={beam.key} className={`replay-beam ${beam.type}`} aria-hidden="true">
+              <line x1={`${x1}%`} y1={y1} x2={`${x2}%`} y2={y2} />
+              <text x={`${(x1 + x2) / 2}%`} y={(y1 + y2) / 2 - 8}>{beam.label}</text>
+            </svg>
+          );
+        })}
+
         {tokens.map((t) => (
           <div
             key={t.id}
-            className={`replay-token ${t.side}${t.alive ? '' : ' dead'}${t.died ? ' just-died' : ''}${t.dmg > 0 ? ' hit' : ''}${t.heal > 0 ? ' healed' : ''}`}
+            className={`replay-token ${t.side}${t.alive ? '' : ' dead'}${t.died ? ' just-died' : ''}${t.dmg > 0 ? ' hit' : ''}${t.heal > 0 ? ' healed' : ''}${t.active ? ' active' : ''}${t.moved ? ' moved' : ''}`}
             style={{ left: `${xpct(t.pos)}%`, top: topFor(t) }}
             title={`${t.name} — ${t.hp}/${t.maxHp} HP @ ${t.pos}′`}
           >
+            {t.active && <div className="turn-ring" aria-hidden="true" />}
             {/* floating combat numbers, re-keyed per frame so they re-animate */}
             {t.dmg > 0 && (
               <span key={`d${idx}`} className="float-num dmg">-{t.dmg}</span>
