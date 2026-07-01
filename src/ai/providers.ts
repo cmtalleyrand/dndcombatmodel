@@ -1,9 +1,10 @@
-// AI provider client: turns a chat-style prompt into raw draft text using either
-// Anthropic (Claude) or OpenAI (ChatGPT), called directly from the browser with a
-// user-supplied API key. Keys are stored in their own localStorage bucket — never
-// part of a Scenario/AIDraft, so they can never leak into a JSON export.
+// AI provider client: turns a chat-style prompt into a parsed AIScenarioDraft using
+// either Anthropic (Claude) or OpenAI (ChatGPT), called directly from the browser
+// with a user-supplied API key. Keys are stored in their own localStorage bucket —
+// never part of a Scenario/AIDraft, so they can never leak into a JSON export.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { buildRepairUserPrompt } from './schemaPrompt';
 
 export type AIProvider = 'anthropic' | 'openai';
 
@@ -13,11 +14,11 @@ export interface ModelOption {
 }
 
 // Stable model aliases (not dated snapshots), so these don't go stale the moment
-// a point release ships. Listed cheapest/fastest-last so the default (first) is a
-// reasonable capability/cost balance for structured-JSON authoring.
+// a point release ships. Sonnet 5 first/default: near-Opus quality for this kind of
+// structured-JSON authoring at a fraction of the latency and cost.
 export const ANTHROPIC_MODELS: ModelOption[] = [
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 (default — balanced)' },
   { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 (most capable)' },
-  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 (balanced)' },
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (fastest)' },
 ];
 
@@ -44,6 +45,10 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   anthropicApiKey: '',
   openaiApiKey: '',
 };
+
+// Generous enough for a multi-combatant encounter draft; requests stream so this
+// doesn't risk an HTTP timeout the way a non-streaming call would.
+const MAX_OUTPUT_TOKENS = 16000;
 
 /** Settings (including API keys) live in their own storage bucket, deliberately
  * separate from scenario/draft persistence, so they can never be swept into a
@@ -87,17 +92,31 @@ export function extractJson(text: string): unknown {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
-/** Ask the configured AI provider to produce draft text from a system + user prompt. */
-export async function generateWithAI(
+interface RawGeneration {
+  text: string;
+  /** true if the response was cut off by the output token limit before finishing. */
+  truncated: boolean;
+}
+
+/** Ask the configured AI provider to produce draft text from a system + user prompt,
+ * streaming incremental text to `onChunk` (called with the full text-so-far) so the
+ * caller can show live progress. */
+async function generateWithAI(
   settings: AISettings,
   systemPrompt: string,
   userPrompt: string,
-): Promise<string> {
-  if (settings.provider === 'anthropic') return generateWithAnthropic(settings, systemPrompt, userPrompt);
-  return generateWithOpenAI(settings, systemPrompt, userPrompt);
+  onChunk?: (textSoFar: string) => void,
+): Promise<RawGeneration> {
+  if (settings.provider === 'anthropic') return generateWithAnthropic(settings, systemPrompt, userPrompt, onChunk);
+  return generateWithOpenAI(settings, systemPrompt, userPrompt, onChunk);
 }
 
-async function generateWithAnthropic(settings: AISettings, systemPrompt: string, userPrompt: string): Promise<string> {
+async function generateWithAnthropic(
+  settings: AISettings,
+  systemPrompt: string,
+  userPrompt: string,
+  onChunk?: (textSoFar: string) => void,
+): Promise<RawGeneration> {
   if (!settings.anthropicApiKey) throw new Error('Add an Anthropic API key in AI Provider settings first.');
   const client = new Anthropic({
     apiKey: settings.anthropicApiKey,
@@ -106,21 +125,27 @@ async function generateWithAnthropic(settings: AISettings, systemPrompt: string,
     dangerouslyAllowBrowser: true,
   });
   try {
-    const response = await client.messages.create({
+    const stream = client.messages.stream({
       model: settings.anthropicModel,
-      max_tokens: 8192,
+      max_tokens: MAX_OUTPUT_TOKENS,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     });
-    if (response.stop_reason === 'refusal') {
+    let acc = '';
+    stream.on('text', (delta) => {
+      acc += delta;
+      onChunk?.(acc);
+    });
+    const final = await stream.finalMessage();
+    if (final.stop_reason === 'refusal') {
       throw new Error('Claude declined this request. Try rephrasing the prompt.');
     }
-    const text = response.content
+    const text = final.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('');
     if (!text) throw new Error('Claude returned no text content.');
-    return text;
+    return { text, truncated: final.stop_reason === 'max_tokens' };
   } catch (err) {
     throw new Error(describeAnthropicError(err));
   }
@@ -134,7 +159,12 @@ function describeAnthropicError(err: unknown): string {
   return err instanceof Error ? err.message : 'Unknown error calling Anthropic.';
 }
 
-async function generateWithOpenAI(settings: AISettings, systemPrompt: string, userPrompt: string): Promise<string> {
+async function generateWithOpenAI(
+  settings: AISettings,
+  systemPrompt: string,
+  userPrompt: string,
+  onChunk?: (textSoFar: string) => void,
+): Promise<RawGeneration> {
   if (!settings.openaiApiKey) throw new Error('Add an OpenAI API key in AI Provider settings first.');
   let res: Response;
   try {
@@ -146,8 +176,9 @@ async function generateWithOpenAI(settings: AISettings, systemPrompt: string, us
       },
       body: JSON.stringify({
         model: settings.openaiModel,
-        max_completion_tokens: 8192,
+        max_completion_tokens: MAX_OUTPUT_TOKENS,
         response_format: { type: 'json_object' },
+        stream: true,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -157,14 +188,98 @@ async function generateWithOpenAI(settings: AISettings, systemPrompt: string, us
   } catch {
     throw new Error('Could not reach the OpenAI API. Check your network connection.');
   }
-  const body = await res.json().catch(() => null);
   if (!res.ok) {
+    const body = await res.json().catch(() => null);
     const msg = (body as { error?: { message?: string } } | null)?.error?.message;
     if (res.status === 401) throw new Error('OpenAI rejected the API key. Check it and try again.');
     if (res.status === 429) throw new Error('OpenAI rate-limited this request. Wait a moment and retry.');
     throw new Error(msg ? `OpenAI API error: ${msg}` : `OpenAI API error (HTTP ${res.status}).`);
   }
-  const text = (body as { choices?: { message?: { content?: string } }[] } | null)?.choices?.[0]?.message?.content;
-  if (!text) throw new Error('OpenAI returned no text content.');
-  return text;
+  if (!res.body) throw new Error('OpenAI returned an empty response stream.');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let acc = '';
+  let finishReason: string | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const chunk = JSON.parse(payload) as {
+          choices?: { delta?: { content?: string }; finish_reason?: string | null }[];
+        };
+        const choice = chunk.choices?.[0];
+        if (choice?.delta?.content) {
+          acc += choice.delta.content;
+          onChunk?.(acc);
+        }
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
+      } catch {
+        // ignore a malformed/partial SSE fragment; the buffer will complete it next read
+      }
+    }
+  }
+  if (!acc) throw new Error('OpenAI returned no text content.');
+  return { text: acc, truncated: finishReason === 'length' };
+}
+
+export interface DraftGenerationCallbacks {
+  /** called with the full accumulated text as it streams in. */
+  onChunk?: (textSoFar: string) => void;
+  /** called when generation moves from the initial attempt to an automatic JSON repair retry. */
+  onPhase?: (phase: 'generating' | 'repairing') => void;
+}
+
+export interface DraftGenerationResult {
+  draft: unknown;
+  /** true if the first response was invalid JSON and a repair retry was needed. */
+  repaired: boolean;
+}
+
+/**
+ * Generate a draft and parse it as JSON, tolerating one class of failure: if the
+ * model's response isn't valid JSON (but wasn't cut off by the token limit), send
+ * one automatic follow-up asking it to return the same draft as valid JSON before
+ * giving up. Truncated responses fail fast with a clear message instead, since a
+ * repair prompt can't recover text the model never finished writing.
+ */
+export async function generateDraftJson(
+  settings: AISettings,
+  systemPrompt: string,
+  userPrompt: string,
+  callbacks: DraftGenerationCallbacks = {},
+): Promise<DraftGenerationResult> {
+  callbacks.onPhase?.('generating');
+  const first = await generateWithAI(settings, systemPrompt, userPrompt, callbacks.onChunk);
+  try {
+    return { draft: extractJson(first.text), repaired: false };
+  } catch (err) {
+    if (first.truncated) {
+      throw new Error(
+        "The response was cut off before finishing (it hit the model's output limit). Try a smaller or simpler encounter.",
+      );
+    }
+    callbacks.onPhase?.('repairing');
+    const repairPrompt = buildRepairUserPrompt(first.text, err instanceof Error ? err.message : String(err));
+    const second = await generateWithAI(settings, systemPrompt, repairPrompt, callbacks.onChunk);
+    try {
+      return { draft: extractJson(second.text), repaired: true };
+    } catch (err2) {
+      if (second.truncated) {
+        throw new Error('The repaired response was cut off before finishing. Try a smaller or simpler encounter.');
+      }
+      throw new Error(
+        `The model's response still wasn't valid JSON after one automatic repair attempt (${err2 instanceof Error ? err2.message : 'parse error'}). Try again or simplify the prompt.`,
+      );
+    }
+  }
 }

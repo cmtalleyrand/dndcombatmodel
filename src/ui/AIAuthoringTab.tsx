@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Scenario } from '../engine/types';
 import type { AIScenarioDraft } from '../ai/types';
 import { convertDraftToScenario } from '../ai/convertDraftToScenario';
 import {
   AI_AUTHORING_SCHEMA_PROMPT,
   AI_GENERATION_SYSTEM_PROMPT,
+  AI_PROMPT_TEMPLATE,
   buildGenerationUserPrompt,
   buildRevisionUserPrompt,
   formatApprovalTemplate,
@@ -15,8 +16,7 @@ import {
   OPENAI_MODELS,
   currentApiKey,
   currentModel,
-  extractJson,
-  generateWithAI,
+  generateDraftJson,
   loadAISettings,
   saveAISettings,
   type AIProvider,
@@ -106,7 +106,23 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
   const [approvalTemplate, setApprovalTemplate] = useState(formatApprovalTemplate(emptyDraft));
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<'generating' | 'repairing'>('generating');
+  const [streamPreview, setStreamPreview] = useState('');
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [settings, setSettings] = useState<AISettings>(() => loadAISettings());
+
+  // Live "still working" feedback: a ticking clock while a request is in flight,
+  // since encounter drafts can take a while to fully generate.
+  useEffect(() => {
+    if (!busy) {
+      setElapsedMs(0);
+      return;
+    }
+    const start = Date.now();
+    setElapsedMs(0);
+    const id = setInterval(() => setElapsedMs(Date.now() - start), 200);
+    return () => clearInterval(id);
+  }, [busy]);
 
   const updateSettings = (patch: Partial<AISettings>) => {
     const next = { ...settings, ...patch };
@@ -127,44 +143,59 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
 
   const errors = parsedDraft ? validateDraft(parsedDraft) : ['Draft JSON is not parseable.'];
 
-  const applyDraftJson = (rawText: string) => {
-    const parsed = extractJson(rawText) as AIScenarioDraft;
+  const applyParsedDraft = (parsed: AIScenarioDraft) => {
     setDraftText(JSON.stringify(parsed, null, 2));
     setApprovalTemplate(formatApprovalTemplate(parsed));
-    return parsed;
   };
 
-  const generateDraft = async () => {
+  const useTemplate = () => {
+    if (prompt.trim() && !window.confirm('Replace the current prompt with the fill-in template?')) return;
+    setPrompt(AI_PROMPT_TEMPLATE);
+  };
+
+  const runGeneration = async (userPrompt: string, successVerb: 'generated' | 'revised') => {
+    setBusy(true);
+    setPhase('generating');
+    setStreamPreview('');
+    setMessage(`Asking ${PROVIDER_LABEL[settings.provider]} (${currentModel(settings)})…`);
+    try {
+      const { draft, repaired } = await generateDraftJson(settings, AI_GENERATION_SYSTEM_PROMPT, userPrompt, {
+        onChunk: setStreamPreview,
+        onPhase: setPhase,
+      });
+      const typedDraft = draft as AIScenarioDraft;
+      applyParsedDraft(typedDraft);
+      const issues = validateDraft(typedDraft);
+      const prefix = repaired ? `Draft ${successVerb} (needed one automatic JSON fix). ` : `Draft ${successVerb}. `;
+      setMessage(
+        prefix +
+          (issues.length === 0
+            ? 'The active scenario is unchanged until approval.'
+            : `${issues.length} issue(s) to fix before approving:\n${issues.join('\n')}`),
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `Failed to ${successVerb === 'generated' ? 'generate' : 'revise'} a draft.`);
+    } finally {
+      setBusy(false);
+      setStreamPreview('');
+    }
+  };
+
+  const generateDraft = () => {
     if (!hasKey) {
       const next = draftFromScenario(scenario, prompt);
-      setDraftText(JSON.stringify(next, null, 2));
-      setApprovalTemplate(formatApprovalTemplate(next));
+      applyParsedDraft(next);
       setMessage('No API key configured — generated a local draft mirroring the current scenario instead. Add a key under AI Provider to generate from your prompt.');
       return;
     }
     if (!prompt.trim()) {
-      setMessage('Describe the encounter in the prompt box first.');
+      setMessage('Describe the encounter in the prompt box first (or click "Use template").');
       return;
     }
-    setBusy(true);
-    setMessage(`Asking ${PROVIDER_LABEL[settings.provider]} (${currentModel(settings)}) to draft the encounter…`);
-    try {
-      const text = await generateWithAI(settings, AI_GENERATION_SYSTEM_PROMPT, buildGenerationUserPrompt(prompt));
-      const draft = applyDraftJson(text);
-      const issues = validateDraft(draft);
-      setMessage(
-        issues.length === 0
-          ? 'Draft generated. The active scenario is unchanged until approval.'
-          : `Draft generated with ${issues.length} issue(s) to fix before approving:\n${issues.join('\n')}`,
-      );
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to generate a draft.');
-    } finally {
-      setBusy(false);
-    }
+    void runGeneration(buildGenerationUserPrompt(prompt), 'generated');
   };
 
-  const reviseDraft = async () => {
+  const reviseDraft = () => {
     if (!parsedDraft) {
       setMessage('Cannot revise until draft JSON is valid.');
       return;
@@ -175,8 +206,7 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
         scenarioSummary: prompt.trim() || parsedDraft.scenarioSummary,
         assumptionsRequiringApproval: [...parsedDraft.assumptionsRequiringApproval, 'User requested revision before approval.'],
       };
-      setDraftText(JSON.stringify(next, null, 2));
-      setApprovalTemplate(formatApprovalTemplate(next));
+      applyParsedDraft(next);
       setMessage('No API key configured — applied a local note instead of an AI revision. Add a key under AI Provider to revise with your prompt.');
       return;
     }
@@ -184,22 +214,7 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
       setMessage('Describe what to change in the prompt box first.');
       return;
     }
-    setBusy(true);
-    setMessage(`Asking ${PROVIDER_LABEL[settings.provider]} (${currentModel(settings)}) to revise the draft…`);
-    try {
-      const text = await generateWithAI(settings, AI_GENERATION_SYSTEM_PROMPT, buildRevisionUserPrompt(draftText, prompt));
-      const draft = applyDraftJson(text);
-      const issues = validateDraft(draft);
-      setMessage(
-        issues.length === 0
-          ? 'Draft revised. Review the approval template before applying.'
-          : `Draft revised with ${issues.length} issue(s) to fix before approving:\n${issues.join('\n')}`,
-      );
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to revise the draft.');
-    } finally {
-      setBusy(false);
-    }
+    void runGeneration(buildRevisionUserPrompt(draftText, prompt), 'revised');
   };
 
   const approve = () => {
@@ -242,6 +257,7 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
             Provider
             <select
               value={settings.provider}
+              disabled={busy}
               onChange={(e) => updateSettings({ provider: e.target.value as AIProvider })}
             >
               <option value="anthropic">{PROVIDER_LABEL.anthropic}</option>
@@ -253,6 +269,7 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
             <input
               className="model-id"
               list="ai-model-options"
+              disabled={busy}
               value={currentModel(settings)}
               onChange={(e) =>
                 updateSettings(
@@ -274,6 +291,7 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
               type="password"
               className="short"
               autoComplete="off"
+              disabled={busy}
               placeholder={settings.provider === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
               value={currentApiKey(settings)}
               onChange={(e) =>
@@ -290,21 +308,34 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
 
       <div className="grid-2" style={{ marginTop: '1rem' }}>
         <div className="card">
-          <h3>Chat-style prompt</h3>
+          <div className="row spread">
+            <h3>Chat-style prompt</h3>
+            <button type="button" className="ghost mini" onClick={useTemplate} disabled={busy}>Use template</button>
+          </div>
           <label style={{ width: '100%' }}>
             Describe PCs, enemies, spells, actions, scripts, positioning, and goals
             <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Example: Four level-3 PCs ambush two ogres at 60 feet. Wizard prioritizes Sleep, fighter protects the cleric..." />
           </label>
           <div className="row" style={{ marginTop: '0.75rem' }}>
             <button onClick={generateDraft} disabled={busy}>
-              {busy ? 'Working…' : hasKey ? 'Generate draft' : 'Generate local draft'}
+              {hasKey ? 'Generate draft' : 'Generate local draft'}
             </button>
-            <button className="secondary" onClick={reviseDraft} disabled={busy}>
-              {busy ? 'Working…' : 'Revise draft'}
-            </button>
+            <button className="secondary" onClick={reviseDraft} disabled={busy}>Revise draft</button>
             <button disabled={errors.length > 0 || busy} onClick={approve}>Approve and apply</button>
             <button className="danger" onClick={discard} disabled={busy}>Discard draft</button>
           </div>
+
+          {busy && (
+            <div className="ai-live">
+              <div className="row spread">
+                <span className="muted">
+                  {phase === 'repairing' ? 'Response had invalid JSON — asking the model to fix it…' : 'Streaming response…'}
+                </span>
+                <span className="muted">{(elapsedMs / 1000).toFixed(1)}s · {streamPreview.length.toLocaleString()} chars</span>
+              </div>
+              <pre className="ai-live-text">{streamPreview || 'Waiting for the first tokens…'}</pre>
+            </div>
+          )}
           {message && <div className="muted" style={{ marginTop: '0.75rem', whiteSpace: 'pre-wrap' }}>{message}</div>}
         </div>
 

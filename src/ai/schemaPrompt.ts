@@ -11,9 +11,9 @@ interface AIScenarioDraft {
   enemies: AIDraftCombatant[];
   actions: Action[]; // reusable attacks/spells/abilities referenced by name
   priorityScripts: AIDraftRule[]; // one or more rules per combatant, evaluated top-to-bottom
-  targetPriorities: AIDraftTargetPriority[]; // optional named target lists
+  targetPriorities: AIDraftTargetPriority[]; // optional named target lists, empty array if unused
   assumptionsRequiringApproval: string[]; // call out any guesses you made
-  maxRounds?: number;
+  maxRounds?: number; // defaults to 30
 }
 
 interface AIDraftCombatant {
@@ -24,25 +24,30 @@ interface AIDraftCombatant {
   abilityScores: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
   saveProficiencies?: ('str'|'dex'|'con'|'int'|'wis'|'cha')[];
   proficiencyBonus: number;
-  spellcastingAbility?: 'str'|'dex'|'con'|'int'|'wis'|'cha';
+  spellcastingAbility?: 'str'|'dex'|'con'|'int'|'wis'|'cha'; // only if this combatant casts spells with a save DC
   actionNames: string[]; // must match an Action.name in "actions"
-  spellSlots?: Record<number, number>; // spell level -> slots
-  position?: number; // feet on a single 1D battlefield axis (0 = monster rear)
+  spellSlots?: Record<number, number>; // spell level (as a string key, e.g. "1") -> slots available
+  position?: number; // feet on a single 1D battlefield axis; 0 = monster rear, higher = deeper into PC territory
   speed?: number; // feet per turn, default 30
 }
 
+// A reusable attack/spell/ability. Prefer the simple "manual" attack/damage fields below
+// over anything weapon-library-specific — do not invent a weaponId.
 interface Action {
   id: ''; // leave empty; the app assigns ids
   name: string; // unique
-  kind: 'attack' | 'spell' | 'ability' | 'heal' | 'dodge' | 'move';
-  targets: number;
-  attackBonus?: number;
-  attackCount?: number;
-  damage?: string; // dice expression, e.g. "1d8+3"
-  damageType?: string;
-  healAmount?: string;
-  saveAbility?: 'str'|'dex'|'con'|'int'|'wis'|'cha';
-  saveDc?: number;
+  kind: 'attack' | 'spell' | 'ability' | 'dodge' | 'move';
+  targets: number; // number of distinct targets this hits, usually 1
+  attackBonus?: number; // to-hit bonus for an attack roll
+  attackCount?: number; // number of separate attack rolls this action makes (e.g. 2 for Extra Attack)
+  damage?: string; // dice expression on a hit, e.g. "1d8+3"
+  damageType?: string; // e.g. "slashing", "fire"
+  heal?: string; // dice expression healed, e.g. "1d8+3"; set for a healing spell/ability
+  save?: { ability: 'str'|'dex'|'con'|'int'|'wis'|'cha'; dc?: number; onSuccess: 'half' | 'none' }; // set for a saving-throw effect instead of an attack roll; omit dc to derive it from the caster
+  range?: number; // feet; omit to use a sensible melee/ranged default
+  spellLevel?: number; // spell slot level consumed, omit for cantrips/non-spells
+  concentration?: boolean;
+  moveMode?: 'advance' | 'retreat'; // only for kind: 'move'
 }
 
 interface AIDraftRule {
@@ -50,18 +55,40 @@ interface AIDraftRule {
   actionName: string; // must match an Action.name
   priority: number; // lower fires first
   label?: string;
-  condition: { type: 'always' } | { type: 'hpBelow'; threshold: number } | { type: 'enemyCountAtLeast'; count: number };
-  target: { strategy: 'lowestHpEnemy' | 'nearestEnemy' | 'lowestHpAlly' | 'self' | 'namedList'; targetNames?: string[]; fallback?: string; excludeIncapacitated?: boolean };
+  // condition.type must be one of these exact strings; "value" is a percentage (0-100) for
+  // *HpBelow* conditions or a headcount for enemyCountAtLeast/AtMost; omit value/condition when unused.
+  condition: {
+    type: 'always' | 'selfHpBelowPct' | 'anyAllyHpBelowPct' | 'enemyCountAtLeast' | 'enemyCountAtMost'
+      | 'selfHasCondition' | 'anyEnemyHasCondition' | 'roundAtLeast' | 'roundAtMost' | 'notConcentrating'
+      | 'anyEnemyConcentrating' | 'slotAvailable';
+    value?: number;
+    condition?: string; // condition kind for selfHasCondition/anyEnemyHasCondition, e.g. "poisoned", "frightened", "blessed"
+  };
+  target: {
+    // strategy must be one of these exact strings
+    strategy: 'lowestHpEnemy' | 'highestHpEnemy' | 'nearestEnemy' | 'lowestHpAlly' | 'nearestAlly'
+      | 'self' | 'allEnemies' | 'allAllies' | 'none';
+    targetNames?: string[]; // an explicit ordered priority list of combatant names, used before the strategy
+    fallback?: string; // one of the strategy values above, used once targetNames is exhausted
+    excludeIncapacitated?: boolean;
+  };
 }
 
 interface AIDraftTargetPriority {
   name: string;
   actorName?: string;
   targetNames: string[];
-  fallback: string;
+  fallback: string; // one of the TargetStrategy values listed above
 }
 
-Rules: every actionName referenced by a combatant or rule must exist in "actions"; every combatant referenced by name must exist in "pcs" or "enemies"; combatant and action names must be unique. Keep ability scores, AC, and HP within normal 5e ranges for the stated level/CR. If the request is ambiguous, make a reasonable assumption and record it in assumptionsRequiringApproval rather than asking a question — this draft is reviewed by a human before anything is applied.`;
+Rules: every actionName referenced by a combatant or rule must exist in "actions"; every combatant referenced by name must exist in "pcs" or "enemies"; combatant and action names must be unique; condition.type and target.strategy/fallback must be exactly one of the listed strings (do not invent new ones). Keep ability scores, AC, and HP within normal 5e ranges for the stated level/CR. If the request is ambiguous, make a reasonable assumption and record it in assumptionsRequiringApproval rather than asking a question — this draft is reviewed by a human before anything is applied. Keep the encounter reasonably sized (typically no more than ~6 combatants and ~10 actions total) unless asked for something larger, since the whole draft must fit in one response.`;
+
+/** A flexible fill-in-the-blank starting point for the chat-style prompt; users can edit or delete any line. */
+export const AI_PROMPT_TEMPLATE = `Party (PCs): [number of PCs, classes & levels, notable spells or gear]
+Enemies: [types, count, CR or level, notable abilities]
+Battlefield: [starting distance/positions, terrain features]
+Tactics & priorities: [who focuses which target, when to use limited resources, retreat/protect behavior]
+Other goals: [what you want to learn from this simulation]`;
 
 /** User-turn prompt for an initial draft from a chat-style description. */
 export function buildGenerationUserPrompt(description: string): string {
@@ -71,6 +98,11 @@ export function buildGenerationUserPrompt(description: string): string {
 /** User-turn prompt asking the model to revise an existing draft per new instructions. */
 export function buildRevisionUserPrompt(currentDraftJson: string, instructions: string): string {
   return `Here is the current draft JSON:\n${currentDraftJson}\n\nRevise it per these instructions, keeping everything else the same unless the instructions imply otherwise:\n${instructions.trim()}\n\nRespond with the complete, updated JSON object only.`;
+}
+
+/** User-turn prompt asking the model to fix JSON it returned that failed to parse. */
+export function buildRepairUserPrompt(brokenText: string, parseError: string): string {
+  return `The JSON you returned could not be parsed: ${parseError}\n\nHere is what you returned:\n${brokenText}\n\nReturn the same draft again, but as complete, syntactically valid JSON only — no markdown fences, no commentary, and make sure it is not cut off before the closing brace.`;
 }
 
 export function formatApprovalTemplate(draft: AIScenarioDraft): string {
