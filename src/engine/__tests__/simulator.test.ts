@@ -53,6 +53,8 @@ function baseScenario(over: Partial<Scenario> = {}): Scenario {
     actions: [sword],
     weapons: [],
     targetLists: [],
+    ruleLibrary: [],
+    conditionLibrary: [],
     initiativeMode: 'rolled',
     maxRounds: 50,
     ...over,

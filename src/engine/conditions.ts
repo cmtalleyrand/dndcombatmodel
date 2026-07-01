@@ -120,6 +120,9 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
   },
 };
 
+/** Every condition kind, derived from the catalog so UI pickers can't drift out of sync with it. */
+export const CONDITION_KINDS = Object.keys(CONDITION_CATALOG) as ConditionKind[];
+
 /** Whether the combatant resists physical damage (e.g. while raging). */
 export function resistsPhysical(conditions: ConditionInstance[]): boolean {
   return conditions.some((c) => CONDITION_CATALOG[c.kind].resistPhysical);

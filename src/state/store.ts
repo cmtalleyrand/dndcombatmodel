@@ -1,7 +1,17 @@
 // Scenario persistence (localStorage) and small immutable update helpers.
 
-import type { Action, Combatant, Rule, Scenario, ScriptPreset, TargetList, Weapon } from '../engine/types';
-import { defaultScenario } from '../data/srd';
+import type {
+  Action,
+  Combatant,
+  ConditionPreset,
+  Rule,
+  RuleTemplate,
+  Scenario,
+  ScriptPreset,
+  TargetList,
+  Weapon,
+} from '../engine/types';
+import { DEFAULT_CONDITION_LIBRARY, DEFAULT_RULE_LIBRARY, defaultScenario } from '../data/srd';
 import { SRD_WEAPONS } from '../data/weapons';
 
 const STORAGE_KEY = 'dnd-combat-sim:scenario:v1';
@@ -34,6 +44,8 @@ export function loadScenario(): Scenario {
       const s = JSON.parse(raw) as Scenario;
       if (!s.weapons) s.weapons = SRD_WEAPONS; // back-compat for v1 scenarios
       if (!s.targetLists) s.targetLists = []; // back-compat for Phase 1/2 scenarios
+      if (!s.ruleLibrary) s.ruleLibrary = DEFAULT_RULE_LIBRARY; // back-compat: prestock the rules library
+      if (!s.conditionLibrary) s.conditionLibrary = DEFAULT_CONDITION_LIBRARY; // back-compat: prestock the conditions library
       return s;
     }
   } catch {
@@ -118,6 +130,48 @@ export function upsertTargetList(scenario: Scenario, t: TargetList): Scenario {
 
 export function removeTargetList(scenario: Scenario, id: string): Scenario {
   return { ...scenario, targetLists: scenario.targetLists.filter((t) => t.id !== id) };
+}
+
+// ---- rules library (reusable rule "recipes") ----
+
+export function upsertRuleTemplate(scenario: Scenario, t: RuleTemplate): Scenario {
+  const idx = scenario.ruleLibrary.findIndex((x) => x.id === t.id);
+  const ruleLibrary =
+    idx >= 0 ? scenario.ruleLibrary.map((x) => (x.id === t.id ? t : x)) : [...scenario.ruleLibrary, t];
+  return { ...scenario, ruleLibrary };
+}
+
+export function removeRuleTemplate(scenario: Scenario, id: string): Scenario {
+  return { ...scenario, ruleLibrary: scenario.ruleLibrary.filter((t) => t.id !== id) };
+}
+
+/** Clone a rule template with a new id and "(copy)" suffix, appended to the library. */
+export function duplicateRuleTemplate(scenario: Scenario, id: string): { scenario: Scenario; newId: string } {
+  const src = scenario.ruleLibrary.find((t) => t.id === id);
+  if (!src) return { scenario, newId: id };
+  const copy: RuleTemplate = { ...src, id: genId('ruletpl'), name: `${src.name} (copy)` };
+  return { scenario: { ...scenario, ruleLibrary: [...scenario.ruleLibrary, copy] }, newId: copy.id };
+}
+
+// ---- conditions library (reusable "apply this condition" recipes) ----
+
+export function upsertConditionPreset(scenario: Scenario, p: ConditionPreset): Scenario {
+  const idx = scenario.conditionLibrary.findIndex((x) => x.id === p.id);
+  const conditionLibrary =
+    idx >= 0 ? scenario.conditionLibrary.map((x) => (x.id === p.id ? p : x)) : [...scenario.conditionLibrary, p];
+  return { ...scenario, conditionLibrary };
+}
+
+export function removeConditionPreset(scenario: Scenario, id: string): Scenario {
+  return { ...scenario, conditionLibrary: scenario.conditionLibrary.filter((p) => p.id !== id) };
+}
+
+/** Clone a condition preset with a new id and "(copy)" suffix, appended to the library. */
+export function duplicateConditionPreset(scenario: Scenario, id: string): { scenario: Scenario; newId: string } {
+  const src = scenario.conditionLibrary.find((p) => p.id === id);
+  if (!src) return { scenario, newId: id };
+  const copy: ConditionPreset = { ...src, id: genId('condpre'), name: `${src.name} (copy)` };
+  return { scenario: { ...scenario, conditionLibrary: [...scenario.conditionLibrary, copy] }, newId: copy.id };
 }
 
 // ---- script reuse ----
@@ -260,6 +314,8 @@ function normalizeScenario(parsed: Scenario): Scenario {
   }
   if (!parsed.weapons) parsed.weapons = SRD_WEAPONS;
   if (!parsed.targetLists) parsed.targetLists = [];
+  if (!parsed.ruleLibrary) parsed.ruleLibrary = DEFAULT_RULE_LIBRARY;
+  if (!parsed.conditionLibrary) parsed.conditionLibrary = DEFAULT_CONDITION_LIBRARY;
   return sanitizeForExport(parsed) as Scenario;
 }
 

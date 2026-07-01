@@ -1,7 +1,7 @@
 // Curated SRD-flavored content: a reusable action library, sample PCs and monsters,
 // and a default scenario that demonstrates scripting (priorities, conditions, targets).
 
-import type { Action, Combatant, Scenario } from '../engine/types';
+import type { Action, Combatant, ConditionPreset, RuleTemplate, Scenario } from '../engine/types';
 import { SRD_WEAPONS } from './weapons';
 
 // ---------------------------------------------------------------------------
@@ -174,6 +174,152 @@ export const SRD_ACTIONS: Action[] = [
     damageType: 'fire',
     save: { ability: 'dex', onSuccess: 'half' },
     note: 'Hits all enemies within 20ft of the primary target; Dex save for half.',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Rules library — reusable tactical "recipes" (condition + action + target)
+// insertable into any combatant's priority script.
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_RULE_LIBRARY: RuleTemplate[] = [
+  {
+    id: 'ruletpl-focus-lowest-hp',
+    name: 'Focus lowest-HP enemy',
+    condition: { type: 'always' },
+    actionId: 'act-mace',
+    target: { strategy: 'lowestHpEnemy', excludeIncapacitated: true },
+  },
+  {
+    id: 'ruletpl-nearest-enemy',
+    name: 'Attack nearest enemy',
+    condition: { type: 'always' },
+    actionId: 'act-scimitar',
+    target: { strategy: 'nearestEnemy' },
+  },
+  {
+    id: 'ruletpl-heal-hurt-ally',
+    name: 'Heal a hurt ally (< 50% HP)',
+    condition: { type: 'anyAllyHpBelowPct', value: 50 },
+    actionId: 'act-cure-wounds',
+    target: { strategy: 'lowestHpAlly' },
+  },
+  {
+    id: 'ruletpl-bless-once',
+    name: 'Bless the party (once)',
+    condition: { type: 'notConcentrating' },
+    actionId: 'act-bless',
+    target: { strategy: 'allAllies' },
+  },
+  {
+    id: 'ruletpl-retreat-when-hurt',
+    name: 'Retreat when badly hurt (< 25% HP)',
+    condition: { type: 'selfHpBelowPct', value: 25 },
+    actionId: 'act-move',
+    target: { strategy: 'self' },
+  },
+  {
+    id: 'ruletpl-nova-round1',
+    name: 'Open with AoE control (round 1)',
+    condition: { type: 'roundAtMost', value: 1 },
+    actionId: 'act-sleep',
+    target: { strategy: 'allEnemies', excludeIncapacitated: true },
+  },
+  {
+    id: 'ruletpl-spend-slots',
+    name: 'Cast while a spell slot remains',
+    condition: { type: 'slotAvailable' },
+    actionId: 'act-magic-missile',
+    target: { strategy: 'lowestHpEnemy', excludeIncapacitated: true },
+  },
+  {
+    id: 'ruletpl-gang-up',
+    name: 'Pile on when outnumbering (3+ enemies)',
+    condition: { type: 'enemyCountAtLeast', value: 3 },
+    actionId: 'act-longsword-2x',
+    target: { strategy: 'lowestHpEnemy', excludeIncapacitated: true },
+  },
+  {
+    id: 'ruletpl-punish-concentration',
+    name: "Break an enemy's concentration",
+    condition: { type: 'anyEnemyConcentrating' },
+    actionId: 'act-fire-bolt',
+    target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
+  },
+  {
+    id: 'ruletpl-fallback-dodge',
+    name: 'Fallback: Dodge',
+    condition: { type: 'always' },
+    actionId: 'act-dodge',
+    target: { strategy: 'self' },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Conditions library — reusable "apply this condition" recipes (kind + duration)
+// insertable into any action's on-hit / failed-save condition list.
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_CONDITION_LIBRARY: ConditionPreset[] = [
+  {
+    id: 'condpre-prone-round',
+    name: 'Knocked Prone (until start of next turn)',
+    kind: 'prone',
+    duration: { type: 'rounds', rounds: 1 },
+  },
+  {
+    id: 'condpre-poisoned-1min',
+    name: 'Poisoned (1 minute)',
+    kind: 'poisoned',
+    duration: { type: 'rounds', rounds: 10 },
+  },
+  {
+    id: 'condpre-restrained-save',
+    name: 'Restrained (save ends, DC 13 STR)',
+    kind: 'restrained',
+    duration: { type: 'saveEnds', ability: 'str', dc: 13 },
+  },
+  {
+    id: 'condpre-frightened-save',
+    name: 'Frightened (save ends, DC 13 WIS)',
+    kind: 'frightened',
+    duration: { type: 'saveEnds', ability: 'wis', dc: 13 },
+  },
+  {
+    id: 'condpre-stunned-round',
+    name: 'Stunned (1 round)',
+    kind: 'stunned',
+    duration: { type: 'rounds', rounds: 1 },
+  },
+  {
+    id: 'condpre-paralyzed-save',
+    name: 'Paralyzed (save ends, DC 15 CON)',
+    kind: 'paralyzed',
+    duration: { type: 'saveEnds', ability: 'con', dc: 15 },
+  },
+  {
+    id: 'condpre-blessed-concentration',
+    name: 'Blessed (while caster concentrates)',
+    kind: 'blessed',
+    duration: { type: 'concentration', sourceId: '' },
+  },
+  {
+    id: 'condpre-marked-concentration',
+    name: 'Marked (while caster concentrates)',
+    kind: 'marked',
+    duration: { type: 'concentration', sourceId: '' },
+  },
+  {
+    id: 'condpre-raging-10',
+    name: 'Raging (10 rounds)',
+    kind: 'raging',
+    duration: { type: 'rounds', rounds: 10 },
+  },
+  {
+    id: 'condpre-asleep-10',
+    name: 'Asleep (10 rounds, wakes on damage)',
+    kind: 'asleep',
+    duration: { type: 'rounds', rounds: 10 },
   },
 ];
 
@@ -383,6 +529,8 @@ export function defaultScenario(): Scenario {
       // reusable list referenced by the fighter: focus the orcs, then nearest enemy
       { id: 'tl-orcs-first', name: 'Orcs first', entries: ['m-orc1', 'm-orc2'], fallback: 'nearestEnemy' },
     ],
+    ruleLibrary: DEFAULT_RULE_LIBRARY,
+    conditionLibrary: DEFAULT_CONDITION_LIBRARY,
     initiativeMode: 'rolled',
     maxRounds: 30,
   };
