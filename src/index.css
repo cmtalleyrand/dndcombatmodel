@@ -26,6 +26,18 @@
   --monster-soft: #e0908b;
   --good: #6fae6a;
 
+  /* Status — distinct from brand (gold) and from side-identity (monster red) */
+  --warning: #d98a3d;
+  --warning-soft: #eab074;
+  --danger: #a83b32;
+  --danger-soft: #d97b71;
+
+  /* Categorical accents — for badges/icons that classify content, not status or side */
+  --arcane: #7c6fb0;
+  --arcane-soft: #a89bd6;
+  --utility: #4f9e97;
+  --utility-soft: #7ec4bd;
+
   --accent: var(--crimson);
   --accent-2: var(--gold);
 
@@ -61,7 +73,9 @@ body {
     radial-gradient(1100px 520px at 50% -160px, rgba(205, 163, 73, 0.12), transparent 70%),
     radial-gradient(900px 600px at 100% 8%, rgba(182, 67, 47, 0.08), transparent 60%),
     radial-gradient(1000px 700px at 0% 100%, rgba(91, 148, 214, 0.05), transparent 60%),
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.012) 0 2px, transparent 2px 4px);
+    radial-gradient(700px 900px at 0% 45%, rgba(205, 163, 73, 0.05), transparent 65%),
+    radial-gradient(700px 900px at 100% 55%, rgba(182, 67, 47, 0.05), transparent 65%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.016) 0 2px, transparent 2px 4px);
   background-attachment: fixed;
 }
 
@@ -70,7 +84,7 @@ h1, h2, h3 {
   letter-spacing: 0.01em;
 }
 
-h1, h2 {
+h1, h2, h3 {
   font-family: 'Cinzel', Georgia, serif;
 }
 
@@ -99,7 +113,7 @@ a:hover {
 }
 
 .app {
-  max-width: 1160px;
+  max-width: 1320px;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 4rem;
 }
@@ -120,7 +134,6 @@ header.app-header {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   position: relative;
-  overflow: hidden;
 }
 
 header.app-header::before {
@@ -128,6 +141,7 @@ header.app-header::before {
   position: absolute;
   inset: 0 0 auto 0;
   height: 3px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   background: linear-gradient(90deg, transparent, var(--gold), var(--crimson-bright), var(--gold), transparent);
 }
 
@@ -151,7 +165,9 @@ header.app-header .muted {
 .tabs {
   display: flex;
   gap: 0.3rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
   margin-bottom: 1.5rem;
   padding: 0.4rem;
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
@@ -160,17 +176,23 @@ header.app-header .muted {
   box-shadow: var(--shadow);
 }
 
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
 .tab {
   position: relative;
+  flex: 0 0 auto;
   background: transparent;
   border: 1px solid transparent;
   color: var(--muted);
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.85rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.88rem;
   font-weight: 500;
   letter-spacing: 0.02em;
+  white-space: nowrap;
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -236,6 +258,122 @@ header.app-header .muted {
 
 .card.monster {
   border-left-color: var(--monster);
+}
+
+/* Responsive grid so short lists (e.g. 4 PCs) fill the viewport instead of
+   stacking as one narrow column with dead space around/below them. */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.card-grid > .card {
+  margin-bottom: 0;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.6rem 0.75rem;
+}
+
+.card-head-main {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.card-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--panel-3);
+  border: 1.5px solid var(--border);
+  color: var(--muted);
+}
+
+.card-icon.pc {
+  color: var(--pc-soft);
+  border-color: var(--pc);
+  box-shadow: 0 0 0 3px rgba(91, 148, 214, 0.12);
+}
+
+.card-icon.monster {
+  color: var(--monster-soft);
+  border-color: var(--monster);
+  box-shadow: 0 0 0 3px rgba(192, 82, 77, 0.12);
+}
+
+.card-title {
+  min-width: 0;
+}
+
+.card-title strong {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 1.02rem;
+}
+
+.card-subtitle {
+  font-size: 0.74rem;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 0.1rem;
+}
+
+.card-stats {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.stat-chip svg {
+  color: var(--faint);
+}
+
+.meta-line {
+  font-size: 0.76rem;
+  color: var(--faint);
+  margin-top: 0.3rem;
+}
+
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--panel-3);
+  border: 1.5px solid var(--gold);
+  color: var(--gold-bright);
+  font-family: 'Cinzel', Georgia, serif;
+  font-weight: 700;
+  font-size: 0.78rem;
+  flex: 0 0 auto;
 }
 
 /* ── Layout helpers ─────────────────────────────────────── */
@@ -376,13 +514,13 @@ button.ghost:hover:not(:disabled) {
 
 button.danger {
   background: transparent;
-  color: var(--monster-soft);
-  border: 1px solid rgba(192, 82, 77, 0.5);
+  color: var(--danger-soft);
+  border: 1px solid rgba(168, 59, 50, 0.5);
   box-shadow: none;
 }
 button.danger:hover:not(:disabled) {
-  background: rgba(192, 82, 77, 0.15);
-  border-color: var(--monster);
+  background: rgba(168, 59, 50, 0.15);
+  border-color: var(--danger);
   filter: none;
 }
 
@@ -395,6 +533,104 @@ button.mini {
   padding: 0.25rem 0.55rem;
   font-size: 0.76rem;
   border-radius: 6px;
+}
+
+button.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+}
+
+/* ── Menu / dropdown disclosure ─────────────────────────── */
+.menu-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem;
+  gap: 0.15rem;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+
+.menu-panel-right {
+  right: 0;
+}
+
+.menu-panel-left {
+  left: 0;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  box-shadow: none;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: var(--panel-3);
+  filter: none;
+}
+
+/* ── Info hint (collapses long help text behind an "i" icon) ─ */
+.info-hint-wrap {
+  position: relative;
+  display: inline-flex;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.info-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.info-hint:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  filter: none;
+}
+
+.info-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: max(260px, min(360px, 60vw));
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 0.75rem 0.85rem;
+  margin: 0;
 }
 
 /* ── Ability grid ───────────────────────────────────────── */
@@ -1119,4 +1355,6 @@ td.num, th.num {
   .ability-grid { grid-template-columns: repeat(3, 1fr); }
   header.app-header h1 { font-size: 1.25rem; }
   .dmg-name { width: 5rem; }
+  .card-grid { grid-template-columns: 1fr; }
+  .menu-panel-right, .info-popover { right: 0; left: auto; width: min(300px, calc(100vw - 2rem)); }
 }
