@@ -10,7 +10,7 @@ import {
   healFlat,
 } from './derive';
 import type { LogEvent } from './log';
-import { approach, effectiveRange, reposition } from './movement';
+import { approach, effectiveRange, keepAtRange, reposition } from './movement';
 import {
   abilityMod,
   attackAdvantage,
@@ -323,12 +323,22 @@ export function performAction(
 
     case 'attack': {
       resolveAttack(state, rng, actor, action, targets, events);
+      keepAtRange(
+        state,
+        actor,
+        targets[0],
+        effectiveRange(action, action.weaponId ? state.weaponsById[action.weaponId] : undefined),
+        events,
+      );
       return;
     }
 
     case 'spell':
     case 'ability': {
       resolveSpellOrAbility(state, rng, actor, action, targets, events);
+      if (action.damage || action.save || action.spellAttack) {
+        keepAtRange(state, actor, targets[0], effectiveRange(action, undefined), events);
+      }
       return;
     }
   }
