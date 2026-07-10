@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { defaultScenario, DEFAULT_CONDITION_LIBRARY, DEFAULT_RULE_LIBRARY, SAMPLE_PCS, SRD_ACTIONS } from '../srd';
+import {
+  defaultScenario,
+  DEFAULT_CONDITION_LIBRARY,
+  DEFAULT_RULE_LIBRARY,
+  LEVEL_1_CLASS_PCS,
+  LEVEL_3_CLASS_PCS,
+  SAMPLE_MONSTERS,
+  SAMPLE_PCS,
+  SRD_ACTIONS,
+} from '../srd';
 import { CONDITION_KINDS } from '../../engine/conditions';
 import { SRD_WEAPONS } from '../weapons';
 import { runMany } from '../../engine/statistics';
@@ -9,8 +18,13 @@ describe('default scenario', () => {
     const s = defaultScenario();
     const ids = new Set(s.actions.map((a) => a.id));
     for (const c of s.combatants) {
+      expect(c.script.length).toBeGreaterThan(0);
+      const combatantActionIds = new Set(c.actionIds);
       for (const aid of c.actionIds) expect(ids.has(aid)).toBe(true);
-      for (const r of c.script) expect(ids.has(r.actionId)).toBe(true);
+      for (const r of c.script) {
+        expect(ids.has(r.actionId)).toBe(true);
+        expect(combatantActionIds.has(r.actionId)).toBe(true);
+      }
     }
   });
 
@@ -38,9 +52,7 @@ describe('default scenario', () => {
     const attackWeaponIds = new Set(SRD_ACTIONS.filter((a) => a.kind === 'attack').map((a) => a.weaponId));
     for (const weapon of SRD_WEAPONS) {
       expect(weapon.mastery).toBeTruthy();
-      if (!['wpn-bite', 'wpn-claw'].includes(weapon.id)) {
-        expect(attackWeaponIds.has(weapon.id)).toBe(true);
-      }
+      expect(attackWeaponIds.has(weapon.id)).toBe(true);
     }
     for (const action of SRD_ACTIONS.filter((a) => a.kind === 'attack' && a.weaponId)) {
       expect(weaponIds.has(action.weaponId!)).toBe(true);
@@ -63,7 +75,52 @@ describe('default scenario', () => {
       expect(ids.has(id)).toBe(true);
     }
     expect(SRD_ACTIONS.filter((a) => ['spell', 'ability'].includes(a.kind)).length).toBeGreaterThanOrEqual(25);
-    expect(SAMPLE_PCS.length).toBe(4);
+    expect(SAMPLE_PCS.length).toBe(6);
+  });
+
+  it('default scenario includes each added PC and monster with at least one valid rule', () => {
+    const s = defaultScenario();
+    const combatantsById = new Set(s.combatants.map((combatant) => combatant.id));
+
+    for (const id of ['pc-ranger', 'pc-barbarian', 'm-skel1', 'm-wolf1', 'm-ogre1']) {
+      expect(combatantsById.has(id)).toBe(true);
+    }
+    expect(s.combatants.every((combatant) => combatant.script.length > 0)).toBe(true);
+  });
+
+
+
+  it('prestocks every class at level 1, at least eight level-3 PCs, and at least 24 monsters', () => {
+    const allActions = new Set(SRD_ACTIONS.map((action) => action.id));
+    const expectedClasses = new Set([
+      'Barbarian',
+      'Bard',
+      'Cleric',
+      'Druid',
+      'Fighter',
+      'Monk',
+      'Paladin',
+      'Ranger',
+      'Rogue',
+      'Sorcerer',
+      'Warlock',
+      'Wizard',
+    ]);
+    const level1Classes = new Set(LEVEL_1_CLASS_PCS.map((pc) => pc.name.replace('Level 1 ', '')));
+
+    expect(level1Classes).toEqual(expectedClasses);
+    expect(LEVEL_3_CLASS_PCS.length).toBeGreaterThanOrEqual(8);
+    expect(SAMPLE_MONSTERS.length).toBeGreaterThanOrEqual(24);
+
+    for (const combatant of [...LEVEL_1_CLASS_PCS, ...LEVEL_3_CLASS_PCS, ...SAMPLE_MONSTERS]) {
+      expect(combatant.script.length).toBeGreaterThan(0);
+      const combatantActions = new Set(combatant.actionIds);
+      for (const actionId of combatant.actionIds) expect(allActions.has(actionId)).toBe(true);
+      for (const rule of combatant.script) {
+        expect(combatantActions.has(rule.actionId)).toBe(true);
+        expect(allActions.has(rule.actionId)).toBe(true);
+      }
+    }
   });
 
   it('keeps action ids unique as the reusable library grows', () => {

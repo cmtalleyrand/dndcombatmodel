@@ -89,6 +89,12 @@ const WEAPON_ATTACK_ACTIONS: Action[] = [
   weaponAttack('act-heavy-crossbow', 'Heavy Crossbow', 'wpn-heavy-crossbow'),
   weaponAttack('act-longbow', 'Longbow', 'wpn-longbow'),
   weaponAttack('act-net', 'Net', 'wpn-net'),
+  weaponAttack('act-bite', 'Bite', 'wpn-bite'),
+  weaponAttack('act-claw', 'Claw', 'wpn-claw'),
+  weaponAttack('act-claw-2x', 'Claw (Multiattack)', 'wpn-claw', {
+    attackCount: 2,
+    note: 'Two claw attacks against one target.',
+  }),
 ];
 
 const SPELL_AND_ABILITY_ACTIONS: Action[] = [
@@ -476,6 +482,41 @@ export const SRD_ACTIONS: Action[] = [
     note: '+2d6 once per turn when you have advantage or an ally is adjacent to the target.',
   },
   {
+    id: 'act-greataxe-rage',
+    name: 'Greataxe + Rage Damage',
+    kind: 'attack',
+    targets: 1,
+    weaponId: 'wpn-greataxe',
+    attackCount: 1,
+    riders: [
+      {
+        label: 'Rage Damage',
+        bonusFlat: 2,
+        trigger: 'selfHasCondition',
+        condition: 'raging',
+        meleeOnly: true,
+      },
+    ],
+    note: '+2 damage while raging.',
+  },
+  {
+    id: 'act-longbow-hunters-mark',
+    name: "Longbow + Hunter's Mark",
+    kind: 'attack',
+    targets: 1,
+    weaponId: 'wpn-longbow',
+    attackCount: 1,
+    riders: [
+      {
+        label: "Hunter's Mark",
+        bonusDice: '1d6',
+        trigger: 'targetHasCondition',
+        condition: 'marked',
+      },
+    ],
+    note: '+1d6 when the target is marked.',
+  },
+  {
     id: 'act-rage',
     name: 'Rage',
     kind: 'ability',
@@ -760,6 +801,68 @@ export const SAMPLE_PCS: Combatant[] = [
       },
     ],
   },
+
+  {
+    id: 'pc-ranger',
+    name: 'Ranger',
+    side: 'pc',
+    maxHp: 28,
+    ac: 15,
+    abilityScores: { str: 11, dex: 16, con: 14, int: 10, wis: 14, cha: 10 },
+    saveProficiencies: ['str', 'dex'],
+    proficiencyBonus: 2,
+    spellcastingAbility: 'wis',
+    position: 45,
+    speed: 30,
+    actionIds: ['act-hunters-mark', 'act-longbow-hunters-mark'],
+    spellSlots: { 1: 3 },
+    script: [
+      {
+        priority: 1,
+        label: 'Mark the healthiest enemy',
+        condition: { type: 'notConcentrating' },
+        actionId: 'act-hunters-mark',
+        target: { strategy: 'highestHpEnemy', excludeIncapacitated: true },
+      },
+      {
+        priority: 2,
+        label: 'Shoot the marked target or lowest-HP enemy',
+        condition: { type: 'always' },
+        actionId: 'act-longbow-hunters-mark',
+        target: { strategy: 'lowestHpEnemy', excludeIncapacitated: true },
+      },
+    ],
+  },
+  {
+    id: 'pc-barbarian',
+    name: 'Barbarian',
+    side: 'pc',
+    maxHp: 35,
+    ac: 14,
+    abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 },
+    saveProficiencies: ['str', 'con'],
+    proficiencyBonus: 2,
+    position: 30,
+    speed: 40,
+    actionIds: ['act-rage', 'act-greataxe-rage'],
+    spellSlots: {},
+    script: [
+      {
+        priority: 1,
+        label: 'Rage before closing',
+        condition: { type: 'roundAtMost', value: 1 },
+        actionId: 'act-rage',
+        target: { strategy: 'self' },
+      },
+      {
+        priority: 2,
+        label: 'Chop the nearest enemy',
+        condition: { type: 'always' },
+        actionId: 'act-greataxe-rage',
+        target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
+      },
+    ],
+  },
   {
     id: 'pc-rogue',
     name: 'Rogue',
@@ -783,6 +886,69 @@ export const SAMPLE_PCS: Combatant[] = [
       },
     ],
   },
+];
+
+
+
+type LibraryPcSpec = {
+  className: string;
+  level: number;
+  actionIds: string[];
+  primaryActionId: string;
+  maxHp: number;
+  ac: number;
+  abilityScores: Combatant['abilityScores'];
+  saveProficiencies: Combatant['saveProficiencies'];
+  spellcastingAbility?: Combatant['spellcastingAbility'];
+  spellSlots?: Combatant['spellSlots'];
+};
+
+function makeLibraryPc(spec: LibraryPcSpec): Combatant {
+  return {
+    id: `pc-l${spec.level}-${spec.className.toLowerCase()}`,
+    name: `Level ${spec.level} ${spec.className}`,
+    side: 'pc',
+    maxHp: spec.maxHp,
+    ac: spec.ac,
+    abilityScores: spec.abilityScores,
+    saveProficiencies: spec.saveProficiencies,
+    proficiencyBonus: 2,
+    spellcastingAbility: spec.spellcastingAbility,
+    position: 45,
+    speed: spec.className === 'Monk' || spec.className === 'Barbarian' ? 40 : 30,
+    actionIds: spec.actionIds,
+    spellSlots: spec.spellSlots ?? {},
+    script: [
+      {
+        priority: 1,
+        label: `Use ${spec.primaryActionId} against the nearest enemy`,
+        condition: { type: 'always' },
+        actionId: spec.primaryActionId,
+        target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
+      },
+    ],
+  };
+}
+
+export const LEVEL_1_CLASS_PCS: Combatant[] = [
+  makeLibraryPc({ className: 'Barbarian', level: 1, maxHp: 14, ac: 14, abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-greataxe'], primaryActionId: 'act-greataxe' }),
+  makeLibraryPc({ className: 'Bard', level: 1, maxHp: 10, ac: 14, abilityScores: { str: 8, dex: 14, con: 14, int: 12, wis: 10, cha: 16 }, saveProficiencies: ['dex', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 2 }, actionIds: ['act-dagger', 'act-thunderwave'], primaryActionId: 'act-thunderwave' }),
+  makeLibraryPc({ className: 'Cleric', level: 1, maxHp: 10, ac: 18, abilityScores: { str: 14, dex: 10, con: 14, int: 10, wis: 16, cha: 12 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'wis', spellSlots: { 1: 2 }, actionIds: ['act-mace', 'act-sacred-flame', 'act-cure-wounds'], primaryActionId: 'act-sacred-flame' }),
+  makeLibraryPc({ className: 'Druid', level: 1, maxHp: 10, ac: 14, abilityScores: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 8 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'wis', spellSlots: { 1: 2 }, actionIds: ['act-quarterstaff', 'act-poison-spray', 'act-cure-wounds'], primaryActionId: 'act-poison-spray' }),
+  makeLibraryPc({ className: 'Fighter', level: 1, maxHp: 12, ac: 18, abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-longsword'], primaryActionId: 'act-longsword' }),
+  makeLibraryPc({ className: 'Monk', level: 1, maxHp: 10, ac: 15, abilityScores: { str: 12, dex: 16, con: 14, int: 10, wis: 14, cha: 8 }, saveProficiencies: ['str', 'dex'], actionIds: ['act-quarterstaff'], primaryActionId: 'act-quarterstaff' }),
+  makeLibraryPc({ className: 'Paladin', level: 1, maxHp: 12, ac: 18, abilityScores: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 14 }, saveProficiencies: ['wis', 'cha'], actionIds: ['act-longsword'], primaryActionId: 'act-longsword' }),
+  makeLibraryPc({ className: 'Ranger', level: 1, maxHp: 12, ac: 15, abilityScores: { str: 11, dex: 16, con: 14, int: 10, wis: 14, cha: 10 }, saveProficiencies: ['str', 'dex'], actionIds: ['act-longbow'], primaryActionId: 'act-longbow' }),
+  makeLibraryPc({ className: 'Rogue', level: 1, maxHp: 10, ac: 15, abilityScores: { str: 10, dex: 16, con: 12, int: 12, wis: 13, cha: 14 }, saveProficiencies: ['dex', 'int'], actionIds: ['act-shortbow'], primaryActionId: 'act-shortbow' }),
+  makeLibraryPc({ className: 'Sorcerer', level: 1, maxHp: 8, ac: 12, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['con', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 2 }, actionIds: ['act-fire-bolt', 'act-burning-hands'], primaryActionId: 'act-fire-bolt' }),
+  makeLibraryPc({ className: 'Warlock', level: 1, maxHp: 10, ac: 13, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 1 }, actionIds: ['act-fire-bolt', 'act-hellish-rebuke'], primaryActionId: 'act-fire-bolt' }),
+  makeLibraryPc({ className: 'Wizard', level: 1, maxHp: 8, ac: 12, abilityScores: { str: 8, dex: 14, con: 13, int: 16, wis: 11, cha: 10 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'int', spellSlots: { 1: 2 }, actionIds: ['act-fire-bolt', 'act-magic-missile'], primaryActionId: 'act-fire-bolt' }),
+];
+
+export const LEVEL_3_CLASS_PCS: Combatant[] = [
+  ...SAMPLE_PCS,
+  makeLibraryPc({ className: 'Bard', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 8, dex: 14, con: 14, int: 12, wis: 10, cha: 16 }, saveProficiencies: ['dex', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-dagger', 'act-thunderwave', 'act-shatter'], primaryActionId: 'act-shatter' }),
+  makeLibraryPc({ className: 'Druid', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 8 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-quarterstaff', 'act-moonbeam', 'act-cure-wounds'], primaryActionId: 'act-moonbeam' }),
 ];
 
 // ---------------------------------------------------------------------------
@@ -841,6 +1007,152 @@ export function makeOrc(id: string, name: string, position = 15): Combatant {
   };
 }
 
+
+export function makeSkeleton(id: string, name: string, position = 0): Combatant {
+  return {
+    id,
+    name,
+    side: 'monster',
+    maxHp: 13,
+    ac: 13,
+    abilityScores: { str: 10, dex: 14, con: 15, int: 6, wis: 8, cha: 5 },
+    saveProficiencies: [],
+    proficiencyBonus: 2,
+    position,
+    speed: 30,
+    actionIds: ['act-shortbow', 'act-shortsword'],
+    spellSlots: {},
+    script: [
+      {
+        priority: 1,
+        label: 'Shoot the lowest-HP PC',
+        condition: { type: 'always' },
+        actionId: 'act-shortbow',
+        target: { strategy: 'lowestHpEnemy', excludeIncapacitated: true },
+      },
+    ],
+  };
+}
+
+export function makeWolf(id: string, name: string, position = 15): Combatant {
+  return {
+    id,
+    name,
+    side: 'monster',
+    maxHp: 11,
+    ac: 13,
+    abilityScores: { str: 12, dex: 15, con: 12, int: 3, wis: 12, cha: 6 },
+    saveProficiencies: [],
+    proficiencyBonus: 2,
+    position,
+    speed: 40,
+    actionIds: ['act-bite'],
+    spellSlots: {},
+    script: [
+      {
+        priority: 1,
+        label: 'Bite the nearest PC',
+        condition: { type: 'always' },
+        actionId: 'act-bite',
+        target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
+      },
+    ],
+  };
+}
+
+export function makeOgre(id: string, name: string, position = 0): Combatant {
+  return {
+    id,
+    name,
+    side: 'monster',
+    maxHp: 59,
+    ac: 11,
+    abilityScores: { str: 19, dex: 8, con: 16, int: 5, wis: 7, cha: 7 },
+    saveProficiencies: [],
+    proficiencyBonus: 2,
+    position,
+    speed: 40,
+    actionIds: ['act-greatclub', 'act-javelin'],
+    spellSlots: {},
+    script: [
+      {
+        priority: 1,
+        label: 'Club the nearest PC',
+        condition: { type: 'always' },
+        actionId: 'act-greatclub',
+        target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
+      },
+    ],
+  };
+}
+
+
+
+type LibraryMonsterSpec = {
+  id: string;
+  name: string;
+  maxHp: number;
+  ac: number;
+  abilityScores: Combatant['abilityScores'];
+  actionIds: string[];
+  primaryActionId: string;
+  position?: number;
+  speed?: number;
+};
+
+function makeLibraryMonster(spec: LibraryMonsterSpec): Combatant {
+  return {
+    id: spec.id,
+    name: spec.name,
+    side: 'monster',
+    maxHp: spec.maxHp,
+    ac: spec.ac,
+    abilityScores: spec.abilityScores,
+    saveProficiencies: [],
+    proficiencyBonus: 2,
+    position: spec.position ?? 0,
+    speed: spec.speed ?? 30,
+    actionIds: spec.actionIds,
+    spellSlots: {},
+    script: [
+      {
+        priority: 1,
+        label: `Use ${spec.primaryActionId} against the nearest PC`,
+        condition: { type: 'always' },
+        actionId: spec.primaryActionId,
+        target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
+      },
+    ],
+  };
+}
+
+export const SAMPLE_MONSTERS: Combatant[] = [
+  makeGoblin('lib-goblin', 'Goblin'),
+  makeOrc('lib-orc', 'Orc'),
+  makeSkeleton('lib-skeleton', 'Skeleton'),
+  makeWolf('lib-wolf', 'Wolf'),
+  makeOgre('lib-ogre', 'Ogre'),
+  makeLibraryMonster({ id: 'lib-bandit', name: 'Bandit', maxHp: 11, ac: 12, abilityScores: { str: 11, dex: 12, con: 12, int: 10, wis: 10, cha: 10 }, actionIds: ['act-scimitar', 'act-light-crossbow'], primaryActionId: 'act-scimitar' }),
+  makeLibraryMonster({ id: 'lib-cultist', name: 'Cultist', maxHp: 9, ac: 12, abilityScores: { str: 11, dex: 12, con: 10, int: 10, wis: 11, cha: 10 }, actionIds: ['act-scimitar'], primaryActionId: 'act-scimitar' }),
+  makeLibraryMonster({ id: 'lib-kobold', name: 'Kobold', maxHp: 5, ac: 12, abilityScores: { str: 7, dex: 15, con: 9, int: 8, wis: 7, cha: 8 }, actionIds: ['act-dagger', 'act-sling'], primaryActionId: 'act-sling' }),
+  makeLibraryMonster({ id: 'lib-zombie', name: 'Zombie', maxHp: 22, ac: 8, abilityScores: { str: 13, dex: 6, con: 16, int: 3, wis: 6, cha: 5 }, actionIds: ['act-club'], primaryActionId: 'act-club' }),
+  makeLibraryMonster({ id: 'lib-giant-rat', name: 'Giant Rat', maxHp: 7, ac: 12, abilityScores: { str: 7, dex: 15, con: 11, int: 2, wis: 10, cha: 4 }, actionIds: ['act-bite'], primaryActionId: 'act-bite' }),
+  makeLibraryMonster({ id: 'lib-giant-bat', name: 'Giant Bat', maxHp: 22, ac: 13, abilityScores: { str: 15, dex: 16, con: 11, int: 2, wis: 12, cha: 6 }, actionIds: ['act-bite'], primaryActionId: 'act-bite', speed: 10 }),
+  makeLibraryMonster({ id: 'lib-boar', name: 'Boar', maxHp: 11, ac: 11, abilityScores: { str: 13, dex: 11, con: 12, int: 2, wis: 9, cha: 5 }, actionIds: ['act-bite'], primaryActionId: 'act-bite', speed: 40 }),
+  makeLibraryMonster({ id: 'lib-black-bear', name: 'Black Bear', maxHp: 19, ac: 11, abilityScores: { str: 15, dex: 10, con: 14, int: 2, wis: 12, cha: 7 }, actionIds: ['act-claw-2x', 'act-bite'], primaryActionId: 'act-claw-2x', speed: 40 }),
+  makeLibraryMonster({ id: 'lib-panther', name: 'Panther', maxHp: 13, ac: 12, abilityScores: { str: 14, dex: 15, con: 10, int: 3, wis: 14, cha: 7 }, actionIds: ['act-claw', 'act-bite'], primaryActionId: 'act-claw', speed: 50 }),
+  makeLibraryMonster({ id: 'lib-giant-spider', name: 'Giant Spider', maxHp: 26, ac: 14, abilityScores: { str: 14, dex: 16, con: 12, int: 2, wis: 11, cha: 4 }, actionIds: ['act-bite'], primaryActionId: 'act-bite' }),
+  makeLibraryMonster({ id: 'lib-gnoll', name: 'Gnoll', maxHp: 22, ac: 15, abilityScores: { str: 14, dex: 12, con: 11, int: 6, wis: 10, cha: 7 }, actionIds: ['act-spear', 'act-longbow'], primaryActionId: 'act-spear' }),
+  makeLibraryMonster({ id: 'lib-hobgoblin', name: 'Hobgoblin', maxHp: 11, ac: 18, abilityScores: { str: 13, dex: 12, con: 12, int: 10, wis: 10, cha: 9 }, actionIds: ['act-longsword', 'act-longbow'], primaryActionId: 'act-longsword' }),
+  makeLibraryMonster({ id: 'lib-bugbear', name: 'Bugbear', maxHp: 27, ac: 16, abilityScores: { str: 15, dex: 14, con: 13, int: 8, wis: 11, cha: 9 }, actionIds: ['act-morningstar', 'act-javelin'], primaryActionId: 'act-morningstar' }),
+  makeLibraryMonster({ id: 'lib-lizardfolk', name: 'Lizardfolk', maxHp: 22, ac: 15, abilityScores: { str: 15, dex: 10, con: 13, int: 7, wis: 12, cha: 7 }, actionIds: ['act-bite', 'act-club', 'act-javelin'], primaryActionId: 'act-bite' }),
+  makeLibraryMonster({ id: 'lib-scout', name: 'Scout', maxHp: 16, ac: 13, abilityScores: { str: 11, dex: 14, con: 12, int: 11, wis: 13, cha: 11 }, actionIds: ['act-shortsword', 'act-longbow'], primaryActionId: 'act-longbow' }),
+  makeLibraryMonster({ id: 'lib-thug', name: 'Thug', maxHp: 32, ac: 11, abilityScores: { str: 15, dex: 11, con: 14, int: 10, wis: 10, cha: 11 }, actionIds: ['act-mace', 'act-heavy-crossbow'], primaryActionId: 'act-mace' }),
+  makeLibraryMonster({ id: 'lib-ape', name: 'Ape', maxHp: 19, ac: 12, abilityScores: { str: 16, dex: 14, con: 14, int: 6, wis: 12, cha: 7 }, actionIds: ['act-club'], primaryActionId: 'act-club', speed: 30 }),
+  makeLibraryMonster({ id: 'lib-dire-wolf', name: 'Dire Wolf', maxHp: 37, ac: 14, abilityScores: { str: 17, dex: 15, con: 15, int: 3, wis: 12, cha: 7 }, actionIds: ['act-bite'], primaryActionId: 'act-bite', speed: 50 }),
+  makeLibraryMonster({ id: 'lib-ghoul', name: 'Ghoul', maxHp: 22, ac: 12, abilityScores: { str: 13, dex: 15, con: 10, int: 7, wis: 10, cha: 6 }, actionIds: ['act-claw', 'act-bite'], primaryActionId: 'act-claw' }),
+];
+
 // ---------------------------------------------------------------------------
 // Default scenario
 // ---------------------------------------------------------------------------
@@ -852,9 +1164,12 @@ export function defaultScenario(): Scenario {
     makeGoblin('m-gob3', 'Goblin 3'),
     makeOrc('m-orc1', 'Orc 1'),
     makeOrc('m-orc2', 'Orc 2'),
+    makeSkeleton('m-skel1', 'Skeleton 1'),
+    makeWolf('m-wolf1', 'Wolf 1'),
+    makeOgre('m-ogre1', 'Ogre 1'),
   ];
   return {
-    name: 'Party of 4 vs 3 Goblins & 2 Orcs',
+    name: 'Party of 6 vs Goblins, Orcs, Skeleton, Wolf & Ogre',
     combatants: [...SAMPLE_PCS, ...monsters],
     actions: SRD_ACTIONS,
     weapons: SRD_WEAPONS,
