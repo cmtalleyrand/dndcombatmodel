@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { defaultScenario, SAMPLE_PCS, SRD_ACTIONS } from '../srd';
+import { defaultScenario, DEFAULT_CONDITION_LIBRARY, DEFAULT_RULE_LIBRARY, SAMPLE_PCS, SRD_ACTIONS } from '../srd';
+import { CONDITION_KINDS } from '../../engine/conditions';
 import { SRD_WEAPONS } from '../weapons';
 import { runMany } from '../../engine/statistics';
 
@@ -88,5 +89,39 @@ describe('default scenario', () => {
       damage: '2d8+4d6',
       spellLevel: 4,
     });
+  });
+
+  it('is prestocked with a rules library and a conditions library', () => {
+    const s = defaultScenario();
+    expect(s.ruleLibrary.length).toBeGreaterThan(0);
+    expect(s.conditionLibrary.length).toBeGreaterThan(0);
+    expect(s.ruleLibrary).toBe(DEFAULT_RULE_LIBRARY);
+    expect(s.conditionLibrary).toBe(DEFAULT_CONDITION_LIBRARY);
+  });
+
+  it('every rule template references a real action and has a unique id/name', () => {
+    const actionIds = new Set(SRD_ACTIONS.map((a) => a.id));
+    const ids = new Set<string>();
+    const names = new Set<string>();
+    for (const t of DEFAULT_RULE_LIBRARY) {
+      expect(actionIds.has(t.actionId)).toBe(true);
+      expect(ids.has(t.id)).toBe(false);
+      expect(names.has(t.name)).toBe(false);
+      ids.add(t.id);
+      names.add(t.name);
+    }
+  });
+
+  it('every condition preset uses a real condition kind and has a unique id/name', () => {
+    const kinds = new Set(CONDITION_KINDS);
+    const ids = new Set<string>();
+    const names = new Set<string>();
+    for (const p of DEFAULT_CONDITION_LIBRARY) {
+      expect(kinds.has(p.kind)).toBe(true);
+      expect(ids.has(p.id)).toBe(false);
+      expect(names.has(p.name)).toBe(false);
+      ids.add(p.id);
+      names.add(p.name);
+    }
   });
 });

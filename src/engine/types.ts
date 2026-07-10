@@ -288,6 +288,33 @@ export interface Rule {
   label?: string;
 }
 
+/**
+ * A reusable, named rule "recipe" — a Rule without a priority (priority is
+ * assigned when it's inserted into a specific combatant's script). Stored in
+ * the scenario's rule library and referenced from the Rules Library UI to
+ * quickly seed common tactical patterns (e.g. "heal a hurt ally").
+ */
+export interface RuleTemplate {
+  id: string;
+  name: string;
+  condition: RuleCondition;
+  actionId: string;
+  target: TargetSelector;
+  label?: string;
+}
+
+/**
+ * A reusable, named "apply this condition" recipe (kind + duration), stored in
+ * the scenario's condition library and referenced from an action's applied-on-hit
+ * conditions to avoid reconfiguring the same kind/duration combo every time.
+ */
+export interface ConditionPreset {
+  id: string;
+  name: string;
+  kind: ConditionKind;
+  duration: DurationKind;
+}
+
 // ---------------------------------------------------------------------------
 // Combatant
 // ---------------------------------------------------------------------------
@@ -337,6 +364,10 @@ export interface Scenario {
   weapons: Weapon[];
   /** reusable named target priority lists referenced by rules. */
   targetLists: TargetList[];
+  /** reusable named rule "recipes" that can be inserted into any combatant's script. */
+  ruleLibrary: RuleTemplate[];
+  /** reusable named condition kind+duration "recipes" for actions' applied-on-hit conditions. */
+  conditionLibrary: ConditionPreset[];
   initiativeMode: InitiativeMode;
   /** for fixed initiative: ordered combatant ids (first acts first). */
   fixedOrder?: string[];

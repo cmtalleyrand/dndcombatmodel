@@ -3,6 +3,8 @@ import { ABILITIES, type Ability, type Combatant, type Scenario, type Side } fro
 import { copyScript, genId, removeCombatant, upsertCombatant } from '../state/store';
 import { RuleBuilder } from './RuleBuilder';
 import { describeAction } from './describe';
+import { InfoHint } from './InfoHint';
+import { HeartIcon, ShieldHalfIcon, TrashIcon, pickCombatantIcon } from './icons';
 
 interface Props {
   side: Side;
@@ -42,30 +44,35 @@ export function CombatantsTab({ side, max, scenario, setScenario }: Props) {
     <div>
       <div className="panel">
         <div className="row spread">
-          <h2>{side === 'pc' ? 'Player Characters' : 'Monsters'}</h2>
+          <h2>
+            {side === 'pc' ? 'Player Characters' : 'Monsters'}
+            <InfoHint>
+              Each combatant needs stats, at least one action, and a priority script. Rules run
+              top-to-bottom; the first one whose condition passes and whose action is available
+              (slots left, a legal target) fires. A built-in Dodge fallback is used when nothing
+              else applies.
+            </InfoHint>
+          </h2>
           <button onClick={add} disabled={combatants.length >= max}>
             + Add {side === 'pc' ? 'PC' : 'Monster'} ({combatants.length}/{max})
           </button>
         </div>
-        <p className="help">
-          Each combatant needs stats, at least one action, and a priority script. Rules run
-          top-to-bottom; the first one whose condition passes and whose action is available (slots
-          left, a legal target) fires. A built-in Dodge fallback is used when nothing else applies.
-        </p>
       </div>
 
       {combatants.length === 0 && <div className="panel muted">No {side === 'pc' ? 'PCs' : 'monsters'} yet.</div>}
 
-      {combatants.map((c) => (
-        <CombatantCard
-          key={c.id}
-          combatant={c}
-          scenario={scenario}
-          setScenario={setScenario}
-          open={openId === c.id}
-          onToggle={() => setOpenId(openId === c.id ? null : c.id)}
-        />
-      ))}
+      <div className="card-grid">
+        {combatants.map((c) => (
+          <CombatantCard
+            key={c.id}
+            combatant={c}
+            scenario={scenario}
+            setScenario={setScenario}
+            open={openId === c.id}
+            onToggle={() => setOpenId(openId === c.id ? null : c.id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -95,18 +102,25 @@ function CombatantCard({
   const otherSameSide = scenario.combatants.filter(
     (c) => c.side === combatant.side && c.id !== combatant.id,
   );
+  const { Icon, label } = pickCombatantIcon(combatant, scenario);
 
   return (
     <div className={`card ${combatant.side}`}>
-      <div className="row spread">
-        <div className="row">
-          <strong>{combatant.name}</strong>
-          <span className="tag">HP {combatant.maxHp}</span>
-          <span className="tag">AC {combatant.ac}</span>
-          <span className="tag">{combatant.actionIds.length} actions</span>
-          <span className="tag">{combatant.script.length} rules</span>
+      <div className="card-head">
+        <div className="card-head-main">
+          <div className={`card-icon ${combatant.side}`}>
+            <Icon size={19} />
+          </div>
+          <div className="card-title">
+            <strong>{combatant.name}</strong>
+            <div className="card-subtitle">{label}</div>
+          </div>
+        </div>
+        <div className="card-stats">
+          <span className="stat-chip"><HeartIcon size={13} />{combatant.maxHp}</span>
+          <span className="stat-chip"><ShieldHalfIcon size={13} />{combatant.ac}</span>
           {validation.length > 0 && (
-            <span className="tag" style={{ color: 'var(--accent-2)', borderColor: 'var(--accent-2)' }}>
+            <span className="tag" style={{ color: 'var(--warning-soft)', borderColor: 'var(--warning)' }}>
               ⚠ {validation.length} issue{validation.length > 1 ? 's' : ''}
             </span>
           )}
@@ -115,16 +129,19 @@ function CombatantCard({
           <button className="secondary" onClick={onToggle}>
             {open ? 'Collapse' : 'Edit'}
           </button>
-          <button className="danger" onClick={() => setScenario(removeCombatant(scenario, combatant.id))}>
-            Delete
+          <button className="danger icon-only" onClick={() => setScenario(removeCombatant(scenario, combatant.id))} title="Delete" aria-label="Delete">
+            <TrashIcon size={15} />
           </button>
         </div>
+      </div>
+      <div className="meta-line">
+        {combatant.actionIds.length} action{combatant.actionIds.length === 1 ? '' : 's'} · {combatant.script.length} rule{combatant.script.length === 1 ? '' : 's'}
       </div>
 
       {open && (
         <div style={{ marginTop: '0.75rem' }}>
           {validation.length > 0 && (
-            <div className="rule" style={{ borderColor: 'var(--accent-2)' }}>
+            <div className="rule" style={{ borderColor: 'var(--warning)' }}>
               {validation.map((v, i) => (
                 <div key={i} className="muted">⚠ {v}</div>
               ))}
@@ -259,12 +276,14 @@ function CombatantCard({
           </div>
 
           <div className="section">
-            <div className="section-title">Available Actions</div>
-            <p className="help">
-              Pick which library actions this combatant can use. The derived to-hit / damage / save
-              DC shown are computed from this combatant's ability scores, proficiency, and the chosen
-              weapon or spellcasting ability.
-            </p>
+            <div className="section-title">
+              Available Actions
+              <InfoHint>
+                Pick which library actions this combatant can use. The derived to-hit / damage /
+                save DC shown are computed from this combatant's ability scores, proficiency, and
+                the chosen weapon or spellcasting ability.
+              </InfoHint>
+            </div>
             {scenario.actions
               .filter((a) => a.kind !== 'dodge' && a.kind !== 'move')
               .map((a) => {

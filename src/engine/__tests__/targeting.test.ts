@@ -11,7 +11,7 @@ function mk(id: string, side: 'pc' | 'monster', over: Partial<Combatant> = {}): 
   };
 }
 function build(combatants: Combatant[], targetLists: TargetList[] = []) {
-  const s: Scenario = { name: 't', combatants, actions: [], weapons: [], targetLists, initiativeMode: 'fixed', fixedOrder: combatants.map((c) => c.id), maxRounds: 10 };
+  const s: Scenario = { name: 't', combatants, actions: [], weapons: [], targetLists, ruleLibrary: [], conditionLibrary: [], initiativeMode: 'fixed', fixedOrder: combatants.map((c) => c.id), maxRounds: 10 };
   return buildCombatState(s);
 }
 

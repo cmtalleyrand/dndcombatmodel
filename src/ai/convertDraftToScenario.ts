@@ -98,6 +98,8 @@ export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
     actions,
     weapons: [],
     targetLists,
+    ruleLibrary: [],
+    conditionLibrary: [],
     initiativeMode: 'rolled',
     maxRounds: draft.maxRounds ?? 30,
   };

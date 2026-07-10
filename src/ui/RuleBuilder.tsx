@@ -3,60 +3,21 @@ import type {
   Combatant,
   ConditionKind,
   Rule,
-  RuleCondition,
   RuleConditionType,
+  RuleTemplate,
   Scenario,
   ScriptPreset,
   TargetStrategy,
 } from '../engine/types';
 import { deletePreset, loadPresets, savePreset } from '../state/store';
+import { CONDITION_KINDS } from '../engine/conditions';
+import { CONDITION_TYPES, defaultCondition, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
 
 interface Props {
   combatant: Combatant;
   scenario: Scenario;
   onChange: (script: Rule[]) => void;
 }
-
-const CONDITION_TYPES: { value: RuleConditionType; label: string; needs: 'none' | 'value' | 'condition' }[] = [
-  { value: 'always', label: 'Always', needs: 'none' },
-  { value: 'selfHpBelowPct', label: 'Self HP below %', needs: 'value' },
-  { value: 'anyAllyHpBelowPct', label: 'Any ally HP below % (incl. self)', needs: 'value' },
-  { value: 'enemyCountAtLeast', label: 'Living enemies ≥', needs: 'value' },
-  { value: 'enemyCountAtMost', label: 'Living enemies ≤', needs: 'value' },
-  { value: 'selfHasCondition', label: 'Self has condition', needs: 'condition' },
-  { value: 'anyEnemyHasCondition', label: 'Any enemy has condition', needs: 'condition' },
-  { value: 'roundAtLeast', label: 'Round ≥', needs: 'value' },
-  { value: 'roundAtMost', label: 'Round ≤', needs: 'value' },
-  { value: 'notConcentrating', label: 'Not concentrating', needs: 'none' },
-  { value: 'anyEnemyConcentrating', label: 'An enemy is concentrating', needs: 'none' },
-  { value: 'slotAvailable', label: "Spell slot available (for this action's level)", needs: 'none' },
-];
-
-const TARGET_STRATEGIES: { value: TargetStrategy; label: string }[] = [
-  { value: 'nearestEnemy', label: 'Nearest enemy' },
-  { value: 'lowestHpEnemy', label: 'Lowest-HP enemy' },
-  { value: 'highestHpEnemy', label: 'Highest-HP enemy' },
-  { value: 'none', label: 'Explicit list / target list (below)' },
-  { value: 'allEnemies', label: 'All enemies (AoE)' },
-  { value: 'nearestAlly', label: 'Nearest ally (incl. self)' },
-  { value: 'lowestHpAlly', label: 'Lowest-HP ally (incl. self)' },
-  { value: 'allAllies', label: 'All allies (incl. self)' },
-  { value: 'self', label: 'Self' },
-];
-
-/** Fallback strategies offered for explicit lists. */
-const FALLBACK_STRATEGIES: { value: TargetStrategy; label: string }[] = [
-  { value: 'nearestEnemy', label: 'then nearest enemy' },
-  { value: 'lowestHpEnemy', label: 'then lowest-HP enemy' },
-  { value: 'nearestAlly', label: 'then nearest ally' },
-  { value: 'lowestHpAlly', label: 'then lowest-HP ally' },
-  { value: 'none', label: 'no fallback' },
-];
-
-const CONDITION_KINDS: ConditionKind[] = [
-  'prone', 'poisoned', 'asleep', 'unconscious', 'blinded', 'restrained',
-  'stunned', 'paralyzed', 'frightened', 'blessed', 'dodging', 'raging', 'marked',
-];
 
 export function RuleBuilder({ combatant, scenario, onChange }: Props) {
   const rules = [...combatant.script].sort((a, b) => a.priority - b.priority);
@@ -101,15 +62,31 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
     return <p className="muted">Select at least one action above to build a script.</p>;
   }
 
+  const insertFromLibrary = (template: RuleTemplate) => {
+    const actionId = available.some((a) => a.id === template.actionId) ? template.actionId : available[0]?.id ?? template.actionId;
+    const rule: Rule = {
+      priority: rules.length + 1,
+      condition: { ...template.condition },
+      actionId,
+      target: { ...template.target },
+      label: template.label,
+    };
+    onChange(renumber([...rules, rule]));
+  };
+
   return (
     <div>
       <PresetBar rules={rules} onApply={(r) => onChange(renumber([...rules, ...r]))} />
+      <RuleLibraryBar library={scenario.ruleLibrary} onInsert={insertFromLibrary} />
       {rules.map((rule, idx) => {
         const condMeta = CONDITION_TYPES.find((c) => c.value === rule.condition.type)!;
         return (
           <div className="rule" key={idx}>
             <div className="row spread">
-              <strong>Priority {rule.priority}</strong>
+              <div className="row" style={{ gap: '0.5rem' }}>
+                <span className="priority-badge">{rule.priority}</span>
+                {rule.label && <span className="muted">{rule.label}</span>}
+              </div>
               <div className="row">
                 <button className="ghost mini" onClick={() => move(idx, -1)} disabled={idx === 0}>↑</button>
                 <button className="ghost mini" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1}>↓</button>
@@ -319,21 +296,25 @@ function PresetBar({ rules, onApply }: { rules: Rule[]; onApply: (rules: Rule[])
   );
 }
 
-function defaultCondition(type: RuleConditionType): RuleCondition {
-  switch (type) {
-    case 'selfHpBelowPct':
-    case 'anyAllyHpBelowPct':
-      return { type, value: 50 };
-    case 'enemyCountAtLeast':
-    case 'enemyCountAtMost':
-      return { type, value: 2 };
-    case 'roundAtLeast':
-    case 'roundAtMost':
-      return { type, value: 1 };
-    case 'selfHasCondition':
-    case 'anyEnemyHasCondition':
-      return { type, condition: 'asleep' };
-    default:
-      return { type };
-  }
+/** Insert a copy of a Rules Library template as a new rule at the end of the script. */
+function RuleLibraryBar({ library, onInsert }: { library: RuleTemplate[]; onInsert: (template: RuleTemplate) => void }) {
+  return (
+    <div className="toolbar">
+      <span className="muted" style={{ fontSize: '0.78rem' }}>Insert from Rules Library:</span>
+      <select
+        value=""
+        onChange={(e) => {
+          const t = library.find((x) => x.id === e.target.value);
+          if (t) onInsert(t);
+        }}
+        disabled={library.length === 0}
+      >
+        <option value="">{library.length ? '— choose —' : '(library empty)'}</option>
+        {library.map((t) => (
+          <option key={t.id} value={t.id}>{t.name}</option>
+        ))}
+      </select>
+      <span className="help" style={{ margin: 0 }}>Manage the library in Action Library → Rules Library.</span>
+    </div>
+  );
 }

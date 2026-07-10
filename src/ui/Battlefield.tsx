@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Scenario } from '../engine/types';
 import { defaultPosition } from '../engine/state';
+import { InfoHint } from './InfoHint';
 
 interface Props {
   scenario: Scenario;
@@ -33,11 +34,13 @@ export function Battlefield({ scenario }: Props) {
 
   return (
     <div className="panel">
-      <h3>Battlefield (linear, feet)</h3>
-      <p className="help">
-        Distance 0 = enemy rear. Melee = same block; ranged/AoE use these distances. Edit a
-        combatant's position on its card.
-      </p>
+      <h3>
+        Battlefield (linear, feet)
+        <InfoHint>
+          Distance 0 = enemy rear. Melee = same block; ranged/AoE use these distances. Edit a
+          combatant's position on its card.
+        </InfoHint>
+      </h3>
       <div style={{ position: 'relative', height: `${[...byPos.values()].reduce((m, g) => Math.max(m, g.length), 1) * 26 + 40}px`, margin: '1rem 0' }}>
         {/* axis line */}
         <div style={{ position: 'absolute', left: 0, right: 0, top: 12, height: 2, background: 'var(--border)' }} />
