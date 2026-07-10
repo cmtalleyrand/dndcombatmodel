@@ -137,7 +137,18 @@ export function ActionLibraryTab({ scenario, setScenario }: Props) {
                       ⧉ Duplicate
                     </button>
                   )}
-                  <button className="danger mini icon-only" disabled={builtin} onClick={() => setScenario(removeAction(scenario, a.id))} title="Delete" aria-label="Delete">
+                  <button
+                    className="danger mini icon-only"
+                    disabled={builtin}
+                    onClick={() => {
+                      const warning = usedBy.length
+                        ? `Delete "${a.name}"? It is used by ${usedBy.length} combatant script${usedBy.length > 1 ? 's' : ''}, which will break until fixed.`
+                        : `Delete "${a.name}"?`;
+                      if (window.confirm(warning)) setScenario(removeAction(scenario, a.id));
+                    }}
+                    title="Delete"
+                    aria-label="Delete"
+                  >
                     <TrashIcon size={14} />
                   </button>
                 </div>

@@ -6,10 +6,11 @@ import { InfoHint } from './InfoHint';
 interface Props {
   scenario: Scenario;
   stats: AggregateStats | null;
+  statsStale?: boolean;
   onGoToRun: () => void;
 }
 
-export function ReplayTab({ scenario, stats, onGoToRun }: Props) {
+export function ReplayTab({ scenario, stats, statsStale, onGoToRun }: Props) {
   const sample = stats?.sampleRun;
   const hasReplay = !!sample && sample.frames.length > 1;
 
@@ -25,6 +26,12 @@ export function ReplayTab({ scenario, stats, onGoToRun }: Props) {
         </h2>
         {hasReplay && <span className="tag">representative simulation</span>}
       </div>
+
+      {hasReplay && statsStale && (
+        <div className="stale-banner" role="status">
+          ⚠ The scenario changed since this run — this replay is out of date. Re-run to refresh.
+        </div>
+      )}
 
       {hasReplay ? (
         <CombatReplay

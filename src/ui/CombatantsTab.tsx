@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { ABILITIES, type Ability, type Combatant, type Scenario, type Side, type Skill } from '../engine/types';
 import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS, SRD_ACTIONS } from '../data/srd';
-import { copyScript, genId, removeCombatant, upsertCombatant } from '../state/store';
+import { copyScript, duplicateCombatant, genId, removeCombatant, upsertCombatant } from '../state/store';
 import { SRD_WEAPONS } from '../data/weapons';
 import { defaultPosition } from '../engine/state';
 import { RuleBuilder } from './RuleBuilder';
 import { describeAction } from './describe';
 import { InfoHint } from './InfoHint';
 import { HeartIcon, ShieldHalfIcon, TrashIcon, pickCombatantIcon } from './icons';
+import { NumberInput } from './NumberInput';
 
 interface Props {
   side: Side;
@@ -228,6 +229,9 @@ function CombatantCard({
             onChange={(e) => {
               const template = sideTemplates.find((t) => t.id === e.target.value);
               if (!template) return;
+              if (!window.confirm(`Replace ${combatant.name} with the "${template.name}" preset? This discards its current stats, actions, and script.`)) {
+                return;
+              }
               const replacement = cloneStoredCombatant(template, scenario.combatants.filter((c) => c.id !== combatant.id));
               setScenario(upsertCombatant(scenario, { ...replacement, id: combatant.id, position: combatant.position }));
             }}
@@ -241,7 +245,25 @@ function CombatantCard({
           <button className="secondary" onClick={onToggle}>
             {open ? 'Collapse' : 'Edit'}
           </button>
-          <button className="danger icon-only" onClick={() => setScenario(removeCombatant(scenario, combatant.id))} title="Delete" aria-label="Delete">
+          <button
+            className="ghost icon-only"
+            onClick={() => {
+              const { scenario: next } = duplicateCombatant(scenario, combatant.id);
+              setScenario(next);
+            }}
+            title="Duplicate this combatant"
+            aria-label="Duplicate this combatant"
+          >
+            ⧉
+          </button>
+          <button
+            className="danger icon-only"
+            onClick={() => {
+              if (window.confirm(`Delete ${combatant.name}?`)) setScenario(removeCombatant(scenario, combatant.id));
+            }}
+            title="Delete"
+            aria-label="Delete"
+          >
             <TrashIcon size={15} />
           </button>
         </div>
@@ -267,30 +289,15 @@ function CombatantCard({
             </label>
             <label>
               Max HP
-              <input
-                className="num"
-                type="number"
-                value={combatant.maxHp}
-                onChange={(e) => update({ maxHp: +e.target.value })}
-              />
+              <NumberInput className="num" min={1} value={combatant.maxHp} onChange={(n) => update({ maxHp: n })} />
             </label>
             <label>
               AC
-              <input
-                className="num"
-                type="number"
-                value={combatant.ac}
-                onChange={(e) => update({ ac: +e.target.value })}
-              />
+              <NumberInput className="num" min={0} value={combatant.ac} onChange={(n) => update({ ac: n })} />
             </label>
             <label>
               Prof. Bonus
-              <input
-                className="num"
-                type="number"
-                value={combatant.proficiencyBonus}
-                onChange={(e) => update({ proficiencyBonus: +e.target.value })}
-              />
+              <NumberInput className="num" min={0} value={combatant.proficiencyBonus} onChange={(n) => update({ proficiencyBonus: n })} />
             </label>
             <label>
               Spellcasting
@@ -319,31 +326,27 @@ function CombatantCard({
             </label>
             <label>
               Speed (ft)
-              <input
-                className="num"
-                type="number"
-                step={5}
-                value={combatant.speed ?? 30}
-                onChange={(e) => update({ speed: +e.target.value })}
-              />
+              <NumberInput className="num" min={0} step={5} value={combatant.speed ?? 30} onChange={(n) => update({ speed: n })} />
             </label>
           </div>
 
           <h3 style={{ marginTop: '0.5rem' }}>Ability Scores</h3>
           <div className="ability-grid">
-            {ABILITIES.map((ab) => (
-              <label key={ab}>
-                {ab.toUpperCase()}
-                <input
-                  className="num"
-                  type="number"
-                  value={combatant.abilityScores[ab]}
-                  onChange={(e) =>
-                    update({ abilityScores: { ...combatant.abilityScores, [ab]: +e.target.value } })
-                  }
-                />
-              </label>
-            ))}
+            {ABILITIES.map((ab) => {
+              const mod = Math.floor((combatant.abilityScores[ab] - 10) / 2);
+              return (
+                <label key={ab}>
+                  {ab.toUpperCase()} <span style={{ color: 'var(--faint)' }}>({mod >= 0 ? '+' : ''}{mod})</span>
+                  <NumberInput
+                    className="num"
+                    min={1}
+                    max={30}
+                    value={combatant.abilityScores[ab]}
+                    onChange={(n) => update({ abilityScores: { ...combatant.abilityScores, [ab]: n } })}
+                  />
+                </label>
+              );
+            })}
           </div>
 
           <h3 style={{ marginTop: '0.75rem' }}>Saving Throw Proficiencies</h3>
@@ -386,17 +389,15 @@ function CombatantCard({
 
           <h3 style={{ marginTop: '0.75rem' }}>Spell Slots</h3>
           <div className="row">
-            {[1, 2, 3, 4, 5].map((lvl) => (
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((lvl) => (
               <label key={lvl}>
                 L{lvl}
-                <input
+                <NumberInput
                   className="num"
-                  type="number"
                   min={0}
                   value={combatant.spellSlots[lvl] ?? 0}
-                  onChange={(e) => {
+                  onChange={(n) => {
                     const slots = { ...combatant.spellSlots };
-                    const n = +e.target.value;
                     if (n > 0) slots[lvl] = n;
                     else delete slots[lvl];
                     update({ spellSlots: slots });

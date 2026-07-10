@@ -22,18 +22,52 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'replay', label: 'Replay' },
 ];
 
+export interface RunHistoryEntry {
+  id: number;
+  label: string;
+  at: number;
+  simulations: number;
+  pcWinRate: number;
+  monsterWinRate: number;
+  drawRate: number;
+  avgRounds: number;
+}
+
 export function App() {
   const [scenario, setScenarioState] = useState<Scenario>(() => loadScenario());
   const [tab, setTab] = useState<Tab>('pcs');
   // The latest Monte-Carlo run, lifted here so both Run & Results and the Replay
   // tab read the same result (the sample run carries the animation frames).
   const [stats, setStats] = useState<AggregateStats | null>(null);
+  // Results are kept after a scenario edit but flagged stale so you can run,
+  // tweak one value, and re-run to compare rather than losing the numbers.
+  const [statsStale, setStatsStale] = useState(false);
+  const [history, setHistory] = useState<RunHistoryEntry[]>([]);
 
   const setScenario = (s: Scenario) => {
     setScenarioState(s);
     saveScenario(s);
-    // A changed scenario invalidates the previous run's results/replay.
-    setStats(null);
+    // A changed scenario makes the previous run's results/replay out of date,
+    // but we keep them visible (marked stale) instead of discarding them.
+    setStatsStale(true);
+  };
+
+  const recordResults = (next: AggregateStats) => {
+    setStats(next);
+    setStatsStale(false);
+    setHistory((prev) => [
+      {
+        id: Date.now(),
+        label: scenario.name,
+        at: Date.now(),
+        simulations: next.simulations,
+        pcWinRate: next.pcWinRate,
+        monsterWinRate: next.monsterWinRate,
+        drawRate: next.drawRate,
+        avgRounds: next.avgRounds,
+      },
+      ...prev,
+    ].slice(0, 8));
   };
 
   useEffect(() => {
@@ -58,12 +92,25 @@ export function App() {
         <ScenarioIO scenario={scenario} setScenario={setScenario} onReset={() => setScenario(resetScenario())} />
       </header>
 
-      <div className="tabs">
-        {TABS.map((t) => (
+      <div className="tabs" role="tablist" aria-label="Sections">
+        {TABS.map((t, i) => (
           <button
             key={t.id}
+            id={`tab-${t.id}`}
+            role="tab"
+            aria-selected={tab === t.id}
+            aria-controls={`panel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
             className={`tab ${tab === t.id ? 'active' : ''}`}
             onClick={() => setTab(t.id)}
+            onKeyDown={(e) => {
+              if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+              e.preventDefault();
+              const dir = e.key === 'ArrowRight' ? 1 : -1;
+              const next = TABS[(i + dir + TABS.length) % TABS.length];
+              setTab(next.id);
+              document.getElementById(`tab-${next.id}`)?.focus();
+            }}
           >
             {t.label}
             {t.id === 'pcs' && ` (${pcs.length})`}
@@ -73,6 +120,7 @@ export function App() {
         ))}
       </div>
 
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
       {tab === 'pcs' && (
         <CombatantsTab side="pc" scenario={scenario} setScenario={setScenario} />
       )}
@@ -82,10 +130,21 @@ export function App() {
       {tab === 'library' && <ActionLibraryTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'initiative' && <InitiativeTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'ai' && <AIAuthoringTab scenario={scenario} setScenario={setScenario} />}
-      {tab === 'run' && <RunTab scenario={scenario} stats={stats} onResults={setStats} onOpenReplay={() => setTab('replay')} />}
-      {tab === 'replay' && (
-        <ReplayTab scenario={scenario} stats={stats} onGoToRun={() => setTab('run')} />
+      {tab === 'run' && (
+        <RunTab
+          scenario={scenario}
+          stats={stats}
+          statsStale={statsStale}
+          history={history}
+          onClearHistory={() => setHistory([])}
+          onResults={recordResults}
+          onOpenReplay={() => setTab('replay')}
+        />
       )}
+      {tab === 'replay' && (
+        <ReplayTab scenario={scenario} stats={stats} statsStale={statsStale} onGoToRun={() => setTab('run')} />
+      )}
+      </div>
     </div>
   );
 }

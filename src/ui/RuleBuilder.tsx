@@ -11,7 +11,8 @@ import type {
 } from '../engine/types';
 import { deletePreset, loadPresets, savePreset } from '../state/store';
 import { CONDITION_KINDS } from '../engine/conditions';
-import { CONDITION_TYPES, defaultCondition, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
+import { CONDITION_TYPES, defaultCondition, describeCondition, describeTarget, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
+import { NumberInput } from './NumberInput';
 
 interface Props {
   combatant: Combatant;
@@ -80,6 +81,9 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
       <RuleLibraryBar library={scenario.ruleLibrary} onInsert={insertFromLibrary} />
       {rules.map((rule, idx) => {
         const condMeta = CONDITION_TYPES.find((c) => c.value === rule.condition.type)!;
+        const actionName = scenario.actions.find((a) => a.id === rule.actionId)?.name ?? '(no action)';
+        // Any earlier unconditional rule makes this one unreachable ("first match wins").
+        const deadAfter = rules.slice(0, idx).some((r) => r.condition.type === 'always');
         return (
           <div className="rule" key={idx}>
             <div className="row spread">
@@ -88,12 +92,21 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
                 {rule.label && <span className="muted">{rule.label}</span>}
               </div>
               <div className="row">
-                <button className="ghost mini" onClick={() => move(idx, -1)} disabled={idx === 0}>↑</button>
-                <button className="ghost mini" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1}>↓</button>
-                <button className="secondary mini" onClick={() => duplicate(idx)}>⧉ Duplicate</button>
-                <button className="danger mini" onClick={() => remove(idx)}>✕</button>
+                <button className="ghost mini" onClick={() => move(idx, -1)} disabled={idx === 0} aria-label="Move rule up" title="Move up">↑</button>
+                <button className="ghost mini" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1} aria-label="Move rule down" title="Move down">↓</button>
+                <button className="secondary mini" onClick={() => duplicate(idx)} aria-label="Duplicate rule">⧉ Duplicate</button>
+                <button className="danger mini" onClick={() => remove(idx)} aria-label="Remove rule" title="Remove">✕</button>
               </div>
             </div>
+
+            <div className="rule-sentence">
+              IF <strong>{describeCondition(rule.condition)}</strong> THEN <strong>{actionName}</strong> targeting <strong>{describeTarget(rule.target)}</strong>
+            </div>
+            {deadAfter && (
+              <div className="muted" style={{ color: 'var(--warning-soft)', fontSize: '0.78rem' }}>
+                ⚠ Unreachable: an earlier “Always” rule fires first, so this rule never runs.
+              </div>
+            )}
 
             <div className="row" style={{ marginTop: '0.4rem' }}>
               <label>
@@ -112,14 +125,12 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
 
               {condMeta.needs === 'value' && (
                 <label>
-                  value
-                  <input
+                  {rule.condition.type.endsWith('Pct') ? 'percent' : 'value'}
+                  <NumberInput
                     className="num"
-                    type="number"
+                    min={0}
                     value={rule.condition.value ?? 0}
-                    onChange={(e) =>
-                      setRule(idx, { condition: { ...rule.condition, value: +e.target.value } })
-                    }
+                    onChange={(n) => setRule(idx, { condition: { ...rule.condition, value: n } })}
                   />
                 </label>
               )}

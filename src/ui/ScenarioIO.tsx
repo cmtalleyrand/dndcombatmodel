@@ -43,15 +43,19 @@ export function ScenarioIO({ scenario, setScenario, onReset }: Props) {
   const doImport = async (file: File) => {
     try {
       const text = await file.text();
-      if (importModeRef.current === 'bundle') {
-        const bundle = importFullBundle(text);
-        setScenario(bundle.currentScenario);
-      } else {
-        setScenario(importScenario(text));
-      }
+      const parsed =
+        importModeRef.current === 'bundle' ? importFullBundle(text).currentScenario : importScenario(text);
+      if (!window.confirm('Importing replaces the current scenario. Continue?')) return;
+      setScenario(parsed);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to import');
+    }
+  };
+
+  const confirmReset = () => {
+    if (window.confirm('Reset to the sample scenario? This discards your current scenario.')) {
+      onReset();
     }
   };
 
@@ -79,7 +83,7 @@ export function ScenarioIO({ scenario, setScenario, onReset }: Props) {
         <MenuItem onClick={() => chooseImport('scenario')}>Import scenario</MenuItem>
         <MenuItem onClick={() => chooseImport('bundle')}>Import full bundle</MenuItem>
       </Menu>
-      <button className="ghost icon-only" onClick={onReset} title="Reset to sample scenario" aria-label="Reset to sample scenario">
+      <button className="ghost icon-only" onClick={confirmReset} title="Reset to sample scenario" aria-label="Reset to sample scenario">
         <ResetIcon size={15} />
       </button>
       <input

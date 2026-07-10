@@ -223,6 +223,9 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
       setMessage('Cannot apply invalid JSON.');
       return;
     }
+    if (!window.confirm('Approve this draft? It replaces the entire current scenario (combatants, actions, scripts).')) {
+      return;
+    }
     try {
       setScenario(convertDraftToScenario(parsedDraft));
       setMessage('Approved draft applied to the scenario.');
@@ -344,14 +347,23 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
         </div>
 
         <div className="card">
-          <h3>Editable approval template</h3>
-          <textarea value={approvalTemplate} onChange={(event) => setApprovalTemplate(event.target.value)} style={{ minHeight: '18rem' }} />
+          <h3>
+            Approval preview{' '}
+            <span className="muted" style={{ fontWeight: 400, fontSize: '0.8rem' }}>
+              (read-only — edit the JSON below to change what gets applied)
+            </span>
+          </h3>
+          <textarea
+            readOnly
+            value={parsedDraft ? formatApprovalTemplate(parsedDraft) : approvalTemplate}
+            style={{ minHeight: '18rem' }}
+          />
         </div>
       </div>
 
       <div className="card" style={{ marginTop: '1rem' }}>
         <div className="row spread">
-          <h3>Typed draft data</h3>
+          <h3>Typed draft data <span className="muted" style={{ fontWeight: 400, fontSize: '0.8rem' }}>(source of truth — this is what Approve applies)</span></h3>
           <span
             className="tag"
             style={errors.length === 0 ? { color: 'var(--good)', borderColor: 'var(--good)' } : { color: 'var(--danger-soft)', borderColor: 'var(--danger)' }}

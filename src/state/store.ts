@@ -79,6 +79,19 @@ export function upsertCombatant(scenario: Scenario, c: Combatant): Scenario {
   return { ...scenario, combatants };
 }
 
+/** Clone a combatant (new id, "(copy)" suffix, its own script copy) appended to the roster. */
+export function duplicateCombatant(scenario: Scenario, id: string): { scenario: Scenario; newId: string } {
+  const src = scenario.combatants.find((c) => c.id === id);
+  if (!src) return { scenario, newId: id };
+  const copy: Combatant = {
+    ...src,
+    id: genId(src.side),
+    name: `${src.name} (copy)`,
+    script: src.script.map((r) => ({ ...r, target: { ...r.target } })),
+  };
+  return { scenario: { ...scenario, combatants: [...scenario.combatants, copy] }, newId: copy.id };
+}
+
 export function removeCombatant(scenario: Scenario, id: string): Scenario {
   return {
     ...scenario,
