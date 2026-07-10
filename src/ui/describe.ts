@@ -87,6 +87,7 @@ export function describeActionGeneric(action: Action, weaponsById: Record<string
       const mods: string[] = [];
       if (action.magicBonus) mods.push(`+${action.magicBonus} magic`);
       if (action.bonusDamageDice) mods.push(`+${action.bonusDamageDice}`);
+      if (w.mastery) mods.push(`mastery: ${w.mastery}`);
       return `${w.name} (${die} ${w.damageType})${mods.length ? ' ' + mods.join(', ') : ''} — to-hit & damage from the wielder`;
     }
     return `${action.damage ?? '—'} (manual)`;
