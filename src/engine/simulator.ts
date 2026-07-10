@@ -1,6 +1,6 @@
 // The simulation driver: initiative, round loop, turn resolution, and a single-run record.
 
-import { dropConcentration, performAction } from './actions';
+import { consumeExtraActionFeature, dropConcentration, performAction } from './actions';
 import { CONDITION_CATALOG } from './conditions';
 import { RNG, rollD20, rollDice, deriveSeed } from './dice';
 import type { LogEvent, TurnFrame, CombatantSnapshot } from './log';
@@ -250,6 +250,7 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
       // Reset per-turn movement budget and once-per-turn rider usage.
       actor.movedThisTurn = 0;
       actor.riderUsedThisTurn.clear();
+      actor.featureUsedThisTurn.clear();
 
       // Mark where this turn's events begin so we can attach them to its frame.
       const eventsBefore = events.length;
@@ -284,6 +285,12 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
         if (isAlive(actor) && canAct(actor)) {
           const bonus = chooseAction(state, actor, 'bonus');
           if (bonus) performAction(state, rng, actor, bonus.action, bonus.targets, events);
+        }
+
+        const extraActions = isAlive(actor) && canAct(actor) ? consumeExtraActionFeature(state, actor) : 0;
+        for (let extra = 0; extra < extraActions && isAlive(actor) && canAct(actor); extra++) {
+          const extraChoice = chooseAction(state, actor);
+          if (extraChoice) performAction(state, rng, actor, extraChoice.action, extraChoice.targets, events);
         }
       }
 
