@@ -17,10 +17,14 @@ describe('default scenario', () => {
     const s = defaultScenario();
     const { stats } = runMany(s, 300, 2025);
     expect(stats.simulations).toBe(300);
+    // probabilities sum to 1
     expect(stats.pcWinRate + stats.monsterWinRate + stats.drawRate).toBeCloseTo(1, 5);
+    // combat resolves within the round cap on average
     expect(stats.avgRounds).toBeGreaterThan(0);
     expect(stats.avgRounds).toBeLessThan(s.maxRounds);
+    // the party should win the majority of the time against this encounter
     expect(stats.pcWinRate).toBeGreaterThan(0.5);
+    // cleric should be doing some healing
     const cleric = stats.combatants.find((c) => c.id === 'pc-cleric')!;
     expect(cleric.avgHealingDone).toBeGreaterThan(0);
   });
