@@ -11,6 +11,51 @@ import {
 import { CONDITION_KINDS } from '../../engine/conditions';
 import { runSimulation } from '../../engine/simulator';
 import { SRD_WEAPONS } from '../weapons';
+import { runMany } from '../../engine/statistics';
+import { DEFAULT_ENCOUNTER_DISTANCE } from '../../engine/state';
+import type { Combatant } from '../../engine/types';
+
+describe('default scenario', () => {
+  it('every combatant references only actions that exist', () => {
+    const s = defaultScenario();
+    const ids = new Set(s.actions.map((a) => a.id));
+    for (const c of s.combatants) {
+      expect(c.script.length).toBeGreaterThan(0);
+      const combatantActionIds = new Set(c.actionIds);
+      for (const aid of c.actionIds) expect(ids.has(aid)).toBe(true);
+      for (const r of c.script) {
+        expect(ids.has(r.actionId)).toBe(true);
+        expect(combatantActionIds.has(r.actionId)).toBe(true);
+      }
+    }
+  });
+
+  it('runs a deterministic smoke simulation with aggregate stats for each combatant', () => {
+    const s = defaultScenario();
+    const { stats } = runMany(s, 1, 2025);
+
+    expect(stats.simulations).toBe(1);
+    expect(['pc', 'monster', 'draw']).toContain(stats.sampleRun.winner);
+    expect(stats.pcWinRate + stats.monsterWinRate + stats.drawRate).toBeCloseTo(1, 5);
+
+    const statIds = new Set(stats.combatants.map((combatant) => combatant.id));
+    expect(statIds).toEqual(new Set(s.combatants.map((combatant) => combatant.id)));
+  });
+
+  it('weapon library exposes mastery traits and reusable weapon attack actions', () => {
+    expect(SRD_WEAPONS.length).toBeGreaterThanOrEqual(39);
+    expect(SRD_ACTIONS.filter((a) => a.kind === 'attack' && a.weaponId).length).toBeGreaterThanOrEqual(40);
+
+    const weaponIds = new Set(SRD_WEAPONS.map((w) => w.id));
+    const attackWeaponIds = new Set(SRD_ACTIONS.filter((a) => a.kind === 'attack').map((a) => a.weaponId));
+    for (const weapon of SRD_WEAPONS) {
+      expect(weapon.mastery).toBeTruthy();
+      expect(attackWeaponIds.has(weapon.id)).toBe(true);
+    }
+    for (const action of SRD_ACTIONS.filter((a) => a.kind === 'attack' && a.weaponId)) {
+      expect(weaponIds.has(action.weaponId!)).toBe(true);
+    }
+  });
 
 const allCombatants = () => [
   ...defaultScenario().combatants,
