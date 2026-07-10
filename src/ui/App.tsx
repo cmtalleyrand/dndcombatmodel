@@ -82,7 +82,7 @@ export function App() {
       {tab === 'actions' && <ActionLibraryTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'initiative' && <InitiativeTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'ai' && <AIAuthoringTab scenario={scenario} setScenario={setScenario} />}
-      {tab === 'run' && <RunTab scenario={scenario} stats={stats} onResults={setStats} />}
+      {tab === 'run' && <RunTab scenario={scenario} stats={stats} onResults={setStats} onOpenReplay={() => setTab('replay')} />}
       {tab === 'replay' && (
         <ReplayTab scenario={scenario} stats={stats} onGoToRun={() => setTab('run')} />
       )}
