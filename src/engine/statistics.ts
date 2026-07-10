@@ -34,6 +34,22 @@ export interface MonteCarloResult {
   stats: AggregateStats;
 }
 
+export interface ProportionInterval {
+  estimate: number;
+  lower: number;
+  upper: number;
+}
+
+export function approximateProportionInterval(estimate: number, trials: number, z = 1.96): ProportionInterval {
+  if (trials <= 0) return { estimate, lower: estimate, upper: estimate };
+  const halfWidth = z * Math.sqrt((estimate * (1 - estimate)) / trials);
+  return {
+    estimate,
+    lower: Math.max(0, estimate - halfWidth),
+    upper: Math.min(1, estimate + halfWidth),
+  };
+}
+
 export function runMany(scenario: Scenario, simulations: number, baseSeed: number): MonteCarloResult {
   const runs: RunResult[] = [];
   for (let i = 0; i < simulations; i++) {

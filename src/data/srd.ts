@@ -951,8 +951,16 @@ export const LEVEL_1_CLASS_PCS: Combatant[] = [
 
 export const LEVEL_3_CLASS_PCS: Combatant[] = [
   ...SAMPLE_PCS,
+  makeLibraryPc({ className: 'Barbarian', level: 3, maxHp: 35, ac: 14, abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-rage', 'act-greataxe-rage'], primaryActionId: 'act-greataxe-rage' }),
   makeLibraryPc({ className: 'Bard', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 8, dex: 14, con: 14, int: 12, wis: 10, cha: 16 }, saveProficiencies: ['dex', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-dagger', 'act-thunderwave', 'act-shatter'], primaryActionId: 'act-shatter' }),
+  makeLibraryPc({ className: 'Cleric', level: 3, maxHp: 24, ac: 18, abilityScores: { str: 14, dex: 10, con: 14, int: 10, wis: 16, cha: 12 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-mace', 'act-sacred-flame', 'act-cure-wounds', 'act-guiding-bolt'], primaryActionId: 'act-guiding-bolt' }),
   makeLibraryPc({ className: 'Druid', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 8 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-quarterstaff', 'act-moonbeam', 'act-cure-wounds'], primaryActionId: 'act-moonbeam' }),
+  makeLibraryPc({ className: 'Fighter', level: 3, maxHp: 31, ac: 18, abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-longsword-2x', 'act-heavy-crossbow'], primaryActionId: 'act-longsword-2x' }),
+  makeLibraryPc({ className: 'Monk', level: 3, maxHp: 24, ac: 15, abilityScores: { str: 12, dex: 16, con: 14, int: 10, wis: 14, cha: 8 }, saveProficiencies: ['str', 'dex'], actionIds: ['act-quarterstaff', 'act-dart'], primaryActionId: 'act-quarterstaff' }),
+  makeLibraryPc({ className: 'Paladin', level: 3, maxHp: 28, ac: 18, abilityScores: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 14 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 3 }, actionIds: ['act-longsword', 'act-javelin'], primaryActionId: 'act-longsword' }),
+  makeLibraryPc({ className: 'Sorcerer', level: 3, maxHp: 20, ac: 12, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['con', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-scorching-ray', 'act-shatter'], primaryActionId: 'act-scorching-ray' }),
+  makeLibraryPc({ className: 'Warlock', level: 3, maxHp: 24, ac: 13, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 2: 2 }, actionIds: ['act-fire-bolt', 'act-hellish-rebuke', 'act-shatter'], primaryActionId: 'act-shatter' }),
+  makeLibraryPc({ className: 'Wizard', level: 3, maxHp: 18, ac: 12, abilityScores: { str: 8, dex: 14, con: 13, int: 16, wis: 11, cha: 10 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'int', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-magic-missile', 'act-scorching-ray'], primaryActionId: 'act-scorching-ray' }),
 ];
 
 // ---------------------------------------------------------------------------
@@ -1100,6 +1108,7 @@ type LibraryMonsterSpec = {
   abilityScores: Combatant['abilityScores'];
   actionIds: string[];
   primaryActionId: string;
+  spellcastingAbility?: Combatant['spellcastingAbility'];
   position?: number;
   speed?: number;
 };
@@ -1115,6 +1124,7 @@ function makeLibraryMonster(spec: LibraryMonsterSpec): Combatant {
     saveProficiencies: [],
     proficiencyBonus: 2,
     position: spec.position ?? defaultMonsterPosition(0),
+    spellcastingAbility: spec.spellcastingAbility,
     speed: spec.speed ?? 30,
     actionIds: spec.actionIds,
     spellSlots: {},
@@ -1155,6 +1165,14 @@ export const SAMPLE_MONSTERS: Combatant[] = [
   makeLibraryMonster({ id: 'lib-ape', name: 'Ape', maxHp: 19, ac: 12, abilityScores: { str: 16, dex: 14, con: 14, int: 6, wis: 12, cha: 7 }, actionIds: ['act-club'], primaryActionId: 'act-club', speed: 30 }),
   makeLibraryMonster({ id: 'lib-dire-wolf', name: 'Dire Wolf', maxHp: 37, ac: 14, abilityScores: { str: 17, dex: 15, con: 15, int: 3, wis: 12, cha: 7 }, actionIds: ['act-bite'], primaryActionId: 'act-bite', speed: 50 }),
   makeLibraryMonster({ id: 'lib-ghoul', name: 'Ghoul', maxHp: 22, ac: 12, abilityScores: { str: 13, dex: 15, con: 10, int: 7, wis: 10, cha: 6 }, actionIds: ['act-claw', 'act-bite'], primaryActionId: 'act-claw' }),
+  makeLibraryMonster({ id: 'lib-acolyte', name: 'Acolyte', maxHp: 9, ac: 10, abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 14, cha: 11 }, actionIds: ['act-sacred-flame', 'act-club'], primaryActionId: 'act-sacred-flame', spellcastingAbility: 'wis' }),
+  makeLibraryMonster({ id: 'lib-guard', name: 'Guard', maxHp: 11, ac: 16, abilityScores: { str: 13, dex: 12, con: 12, int: 10, wis: 11, cha: 10 }, actionIds: ['act-spear', 'act-light-crossbow'], primaryActionId: 'act-spear' }),
+  makeLibraryMonster({ id: 'lib-tribal-warrior', name: 'Tribal Warrior', maxHp: 11, ac: 12, abilityScores: { str: 13, dex: 11, con: 12, int: 8, wis: 11, cha: 8 }, actionIds: ['act-spear'], primaryActionId: 'act-spear' }),
+  makeLibraryMonster({ id: 'lib-noble', name: 'Noble', maxHp: 9, ac: 15, abilityScores: { str: 11, dex: 12, con: 11, int: 12, wis: 14, cha: 16 }, actionIds: ['act-rapier'], primaryActionId: 'act-rapier' }),
+  makeLibraryMonster({ id: 'lib-veteran', name: 'Veteran', maxHp: 58, ac: 17, abilityScores: { str: 16, dex: 13, con: 14, int: 10, wis: 11, cha: 10 }, actionIds: ['act-longsword-2x', 'act-heavy-crossbow'], primaryActionId: 'act-longsword-2x' }),
+  makeLibraryMonster({ id: 'lib-berserker', name: 'Berserker', maxHp: 67, ac: 13, abilityScores: { str: 16, dex: 12, con: 17, int: 9, wis: 11, cha: 9 }, actionIds: ['act-greataxe'], primaryActionId: 'act-greataxe', speed: 30 }),
+  makeLibraryMonster({ id: 'lib-giant-eagle', name: 'Giant Eagle', maxHp: 26, ac: 13, abilityScores: { str: 16, dex: 17, con: 13, int: 8, wis: 14, cha: 10 }, actionIds: ['act-claw', 'act-bite'], primaryActionId: 'act-claw', speed: 10 }),
+  makeLibraryMonster({ id: 'lib-giant-scorpion', name: 'Giant Scorpion', maxHp: 52, ac: 15, abilityScores: { str: 15, dex: 13, con: 15, int: 1, wis: 9, cha: 3 }, actionIds: ['act-claw-2x'], primaryActionId: 'act-claw-2x', speed: 40 }),
 ];
 
 // ---------------------------------------------------------------------------

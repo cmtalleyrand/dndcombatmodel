@@ -1,18 +1,19 @@
 import { useMemo, useState } from 'react';
 import type { Scenario } from '../engine/types';
-import type { AggregateStats, CombatantStats } from '../engine/statistics';
+import { approximateProportionInterval, type AggregateStats, type CombatantStats } from '../engine/statistics';
 import type { LogEvent } from '../engine/log';
 
 interface Props {
   stats: AggregateStats;
   scenario: Scenario;
+  onOpenReplay: () => void;
 }
 
 function pct(x: number) {
   return `${(x * 100).toFixed(1)}%`;
 }
 
-export function Results({ stats, scenario }: Props) {
+export function Results({ stats, scenario, onOpenReplay }: Props) {
   const pcStats = stats.combatants.filter((c) => c.side === 'pc');
   const monsterStats = stats.combatants.filter((c) => c.side === 'monster');
   const roundsUsed = Math.min(
@@ -31,7 +32,7 @@ export function Results({ stats, scenario }: Props) {
 
       <PerRoundDamage stats={stats} rounds={roundsUsed} />
 
-      <SampleRunLog events={stats.sampleRun.events} winner={stats.sampleRun.winner} rounds={stats.sampleRun.rounds} />
+      <SampleRunLog events={stats.sampleRun.events} winner={stats.sampleRun.winner} rounds={stats.sampleRun.rounds} onOpenReplay={onOpenReplay} />
     </div>
   );
 }
@@ -43,6 +44,12 @@ function Outcome({ stats }: { stats: AggregateStats }) {
     { key: 'draw', label: 'Draw', value: stats.drawRate, cls: 'draw' },
     { key: 'monster', label: 'Monsters', value: stats.monsterWinRate, cls: 'monster' },
   ].filter((s) => s.value > 0);
+
+  const intervals = [
+    { key: 'pc', label: 'Party', interval: approximateProportionInterval(stats.pcWinRate, stats.simulations) },
+    { key: 'draw', label: 'Draws', interval: approximateProportionInterval(stats.drawRate, stats.simulations) },
+    { key: 'monster', label: 'Monsters', interval: approximateProportionInterval(stats.monsterWinRate, stats.simulations) },
+  ];
 
   return (
     <div className="panel">
@@ -64,6 +71,15 @@ function Outcome({ stats }: { stats: AggregateStats }) {
         <span className="legend-chip draw">Draws {pct(stats.drawRate)}</span>
         <span className="legend-chip monster">Monsters {pct(stats.monsterWinRate)}</span>
         <span className="tag">Avg length {stats.avgRounds.toFixed(1)} rounds</span>
+      </div>
+
+      <div className="help" style={{ marginTop: '0.75rem' }}>
+        Approximate 95% intervals from Monte-Carlo sampling:{' '}
+        {intervals.map(({ key, label, interval }) => (
+          <span key={key} className="tag" style={{ marginRight: '0.35rem' }}>
+            {label} {pct(interval.lower)}–{pct(interval.upper)}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -150,7 +166,7 @@ function PerRoundDamage({ stats, rounds }: { stats: AggregateStats; rounds: numb
   );
 }
 
-function SampleRunLog({ events, winner, rounds }: { events: LogEvent[]; winner: string; rounds: number }) {
+function SampleRunLog({ events, winner, rounds, onOpenReplay }: { events: LogEvent[]; winner: string; rounds: number; onOpenReplay: () => void }) {
   const [show, setShow] = useState(false);
   const grouped = useMemo(() => {
     const byRound = new Map<number, LogEvent[]>();
@@ -165,7 +181,7 @@ function SampleRunLog({ events, winner, rounds }: { events: LogEvent[]; winner: 
     <div className="panel">
       <div className="row spread">
         <h3>Combat log (one representative simulation)</h3>
-        <button className="secondary" onClick={() => setShow(!show)}>{show ? 'Hide' : 'Show'}</button>
+        <div className="row"><button className="secondary" onClick={onOpenReplay}>Open representative replay</button><button className="secondary" onClick={() => setShow(!show)}>{show ? 'Hide' : 'Show'}</button></div>
       </div>
       <div className="muted" style={{ marginBottom: '0.5rem' }}>
         Result: <strong style={{ color: winner === 'pc' ? 'var(--pc)' : winner === 'monster' ? 'var(--monster)' : 'inherit' }}>

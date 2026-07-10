@@ -2,23 +2,24 @@ import { useState } from 'react';
 import type { Scenario } from '../engine/types';
 import { runMany, type AggregateStats } from '../engine/statistics';
 import { Results } from './Results';
+import { validateScenarioReadiness } from '../engine/validation';
 import { InfoHint } from './InfoHint';
 
 interface Props {
   scenario: Scenario;
   stats: AggregateStats | null;
   onResults: (stats: AggregateStats) => void;
+  onOpenReplay: () => void;
 }
 
-export function RunTab({ scenario, stats, onResults }: Props) {
+export function RunTab({ scenario, stats, onResults, onOpenReplay }: Props) {
   const [sims, setSims] = useState(500);
   const [seed, setSeed] = useState(12345);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState<number | null>(null);
 
-  const pcs = scenario.combatants.filter((c) => c.side === 'pc');
-  const monsters = scenario.combatants.filter((c) => c.side === 'monster');
-  const canRun = pcs.length > 0 && monsters.length > 0;
+  const readiness = validateScenarioReadiness(scenario);
+  const canRun = readiness.isReady;
 
   const run = () => {
     setRunning(true);
@@ -60,14 +61,36 @@ export function RunTab({ scenario, stats, onResults }: Props) {
             </span>
           )}
         </div>
-        {!canRun && (
-          <p className="help" style={{ color: 'var(--warning-soft)' }}>
-            ⚠ You need at least one PC and one monster to run a simulation.
-          </p>
-        )}
+        <ReadinessPanel errors={readiness.errors} warnings={readiness.warnings} />
       </div>
 
-      {stats && <Results stats={stats} scenario={scenario} />}
+      {stats && <Results stats={stats} scenario={scenario} onOpenReplay={onOpenReplay} />}
+    </div>
+  );
+}
+
+function ReadinessPanel({ errors, warnings }: { errors: { message: string }[]; warnings: { message: string }[] }) {
+  const ready = errors.length === 0;
+  return (
+    <div style={{ marginTop: '1rem' }}>
+      <strong>{ready ? '✓ Scenario structurally ready' : '⚠ Scenario needs attention before running'}</strong>
+      {errors.length > 0 && (
+        <>
+          <p className="help" style={{ color: 'var(--warning-soft)' }}>Blocking errors</p>
+          <ul>
+            {errors.map((issue, i) => <li key={i}>{issue.message}</li>)}
+          </ul>
+        </>
+      )}
+      {warnings.length > 0 && (
+        <>
+          <p className="help">Warnings</p>
+          <ul>
+            {warnings.map((issue, i) => <li key={i}>{issue.message}</li>)}
+          </ul>
+        </>
+      )}
+      {ready && warnings.length === 0 && <p className="help">No blocking graph-reference problems were found.</p>}
     </div>
   );
 }
