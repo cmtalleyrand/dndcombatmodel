@@ -33,6 +33,7 @@ import {
   upsertWeapon,
 } from '../state/store';
 import { CONDITION_CATALOG, CONDITION_KINDS } from '../engine/conditions';
+import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS } from '../data/srd';
 import { CONDITION_TYPES, defaultCondition, describeCondition, describeTarget, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
 import { describeActionGeneric } from './describe';
 import { InfoHint } from './InfoHint';
@@ -78,6 +79,7 @@ export function ActionLibraryTab({ scenario, setScenario }: Props) {
 
   return (
     <div>
+      <StoredCombatantsSection scenario={scenario} />
       <WeaponsSection scenario={scenario} setScenario={setScenario} />
       <TargetListsSection scenario={scenario} setScenario={setScenario} />
       <ConditionsLibrarySection scenario={scenario} setScenario={setScenario} />
@@ -156,6 +158,51 @@ export function ActionLibraryTab({ scenario, setScenario }: Props) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+
+function StoredCombatantsSection({ scenario }: { scenario: Scenario }) {
+  const pcPresets = [...LEVEL_1_CLASS_PCS, ...LEVEL_3_CLASS_PCS];
+  const monsterPresets = SAMPLE_MONSTERS;
+  const rows = [
+    { label: 'Stored PCs', items: pcPresets },
+    { label: 'Stored monsters', items: monsterPresets },
+    { label: 'Scenario PCs', items: scenario.combatants.filter((c) => c.side === 'pc') },
+    { label: 'Scenario monsters', items: scenario.combatants.filter((c) => c.side === 'monster') },
+  ];
+  return (
+    <div className="panel">
+      <h2>Library</h2>
+      <div className="muted" style={{ marginBottom: '0.75rem' }}>
+        One index for stored presets and scenario libraries: PCs, monsters, actions, rules, target lists, conditions, weapons, and spells.
+      </div>
+      <div className="card-grid">
+        {rows.map((row) => (
+          <div className="card" key={row.label}>
+            <div className="card-head">
+              <strong>{row.label}</strong>
+              <span className="tag">{row.items.length}</span>
+            </div>
+            <div className="meta-line">
+              {row.items.length === 0 ? 'None' : row.items.map((c) => c.name).join(', ')}
+            </div>
+          </div>
+        ))}
+        <div className="card">
+          <div className="card-head"><strong>Stored actions/spells</strong><span className="tag">{scenario.actions.length}</span></div>
+          <div className="meta-line">{scenario.actions.map((a) => a.name).join(', ')}</div>
+        </div>
+        <div className="card">
+          <div className="card-head"><strong>Stored weapons</strong><span className="tag">{scenario.weapons.length}</span></div>
+          <div className="meta-line">{scenario.weapons.map((w) => w.name).join(', ')}</div>
+        </div>
+        <div className="card">
+          <div className="card-head"><strong>Stored conditions</strong><span className="tag">{scenario.conditionLibrary.length}</span></div>
+          <div className="meta-line">{scenario.conditionLibrary.map((c) => c.name).join(', ')}</div>
+        </div>
       </div>
     </div>
   );
