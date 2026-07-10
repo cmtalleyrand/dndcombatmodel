@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ABILITIES, type Ability, type Combatant, type Scenario, type Side } from '../engine/types';
+import { ABILITIES, type Ability, type Combatant, type Scenario, type Side, type Skill } from '../engine/types';
 import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS } from '../data/srd';
 import { copyScript, genId, removeCombatant, upsertCombatant } from '../state/store';
 import { defaultPosition } from '../engine/state';
@@ -42,6 +42,26 @@ function blankCombatant(side: Side): Combatant {
 }
 
 const PC_LIBRARY = [...LEVEL_1_CLASS_PCS, ...LEVEL_3_CLASS_PCS];
+const SKILLS: { id: Skill; label: string }[] = [
+  { id: 'athletics', label: 'Athletics' },
+  { id: 'acrobatics', label: 'Acrobatics' },
+  { id: 'sleightOfHand', label: 'Sleight of Hand' },
+  { id: 'stealth', label: 'Stealth' },
+  { id: 'arcana', label: 'Arcana' },
+  { id: 'history', label: 'History' },
+  { id: 'investigation', label: 'Investigation' },
+  { id: 'nature', label: 'Nature' },
+  { id: 'religion', label: 'Religion' },
+  { id: 'animalHandling', label: 'Animal Handling' },
+  { id: 'insight', label: 'Insight' },
+  { id: 'medicine', label: 'Medicine' },
+  { id: 'perception', label: 'Perception' },
+  { id: 'survival', label: 'Survival' },
+  { id: 'deception', label: 'Deception' },
+  { id: 'intimidation', label: 'Intimidation' },
+  { id: 'performance', label: 'Performance' },
+  { id: 'persuasion', label: 'Persuasion' },
+];
 
 function templatesForSide(side: Side): Combatant[] {
   return side === 'pc' ? PC_LIBRARY : SAMPLE_MONSTERS;
@@ -152,6 +172,7 @@ function CombatantCard({
     (c) => c.side === combatant.side && c.id !== combatant.id,
   );
   const { Icon, label } = pickCombatantIcon(combatant, scenario);
+  const sideTemplates = templatesForSide(combatant.side);
 
   return (
     <div className={`card ${combatant.side}`}>
@@ -175,6 +196,21 @@ function CombatantCard({
           )}
         </div>
         <div className="row">
+          <select
+            value=""
+            onChange={(e) => {
+              const template = sideTemplates.find((t) => t.id === e.target.value);
+              if (!template) return;
+              const replacement = cloneStoredCombatant(template, scenario.combatants.filter((c) => c.id !== combatant.id));
+              setScenario(upsertCombatant(scenario, { ...replacement, id: combatant.id, position: combatant.position }));
+            }}
+            aria-label={`Change ${combatant.side === 'pc' ? 'PC' : 'monster'} to preset`}
+          >
+            <option value="">Change to preset…</option>
+            {sideTemplates.map((template) => (
+              <option key={template.id} value={template.id}>{template.name}</option>
+            ))}
+          </select>
           <button className="secondary" onClick={onToggle}>
             {open ? 'Collapse' : 'Edit'}
           </button>
@@ -298,6 +334,25 @@ function CombatantCard({
                   }}
                 />
                 {ab.toUpperCase()}
+              </label>
+            ))}
+          </div>
+
+          <h3 style={{ marginTop: '0.75rem' }}>Skill Proficiencies</h3>
+          <div className="row">
+            {SKILLS.map((skill) => (
+              <label key={skill.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={(combatant.skillProficiencies ?? []).includes(skill.id)}
+                  onChange={(e) => {
+                    const set = new Set(combatant.skillProficiencies ?? []);
+                    if (e.target.checked) set.add(skill.id);
+                    else set.delete(skill.id);
+                    update({ skillProficiencies: [...set] as Skill[] });
+                  }}
+                />
+                {skill.label}
               </label>
             ))}
           </div>

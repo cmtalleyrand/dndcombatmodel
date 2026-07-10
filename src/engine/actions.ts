@@ -2,6 +2,7 @@
 
 import { CONDITION_CATALOG, resistsPhysical } from './conditions';
 import { rollD20, rollDice, type RNG, type Advantage, combineAdvantage } from './dice';
+import { rollSavingThrow } from './checks';
 import {
   resolveAttackProfile,
   spellAttackBonus,
@@ -68,8 +69,7 @@ function applyDamage(
   // Concentration check: CON save DC = max(10, floor(damage/2)).
   if (target.concentratingOn && isAlive(target)) {
     const dc = Math.max(10, Math.floor(amount / 2));
-    const bonus = saveBonus(target.base, 'con');
-    const roll = rollD20(rng, bonus, concentrationAdvantage(target));
+    const roll = rollSavingThrow(rng, target.base, 'con', concentrationAdvantage(target));
     if (roll.total < dc) {
       dropConcentration(state, target, events);
     }

@@ -10,12 +10,12 @@ import { ReplayTab } from './ReplayTab';
 import { ScenarioIO } from './ScenarioIO';
 import { AIAuthoringTab } from './AIAuthoringTab';
 
-type Tab = 'pcs' | 'monsters' | 'actions' | 'initiative' | 'ai' | 'run' | 'replay';
+type Tab = 'pcs' | 'monsters' | 'library' | 'initiative' | 'ai' | 'run' | 'replay';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'pcs', label: 'PCs' },
   { id: 'monsters', label: 'Monsters' },
-  { id: 'actions', label: 'Action Library' },
+  { id: 'library', label: 'Library' },
   { id: 'initiative', label: 'Initiative' },
   { id: 'ai', label: 'AI Authoring' },
   { id: 'run', label: 'Run & Results' },
@@ -79,7 +79,7 @@ export function App() {
       {tab === 'monsters' && (
         <CombatantsTab side="monster" scenario={scenario} setScenario={setScenario} />
       )}
-      {tab === 'actions' && <ActionLibraryTab scenario={scenario} setScenario={setScenario} />}
+      {tab === 'library' && <ActionLibraryTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'initiative' && <InitiativeTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'ai' && <AIAuthoringTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'run' && <RunTab scenario={scenario} stats={stats} onResults={setStats} onOpenReplay={() => setTab('replay')} />}

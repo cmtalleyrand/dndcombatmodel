@@ -2,7 +2,6 @@
 
 import { CONDITION_CATALOG, isIncapacitated } from './conditions';
 import type {
-  Ability,
   Action,
   Combatant,
   ConditionInstance,
@@ -150,10 +149,7 @@ export function nearest(from: CombatantState, candidates: CombatantState[]): Com
 }
 
 /** Saving throw bonus for an ability, including proficiency. */
-export function saveBonus(c: Combatant, ability: Ability): number {
-  const mod = abilityMod(c.abilityScores[ability]);
-  return c.saveProficiencies.includes(ability) ? mod + c.proficiencyBonus : mod;
-}
+export { savingThrowBonus as saveBonus, abilityCheckBonus, skillCheckBonus } from './checks';
 
 /** Advantage state for an attack roll made BY this combatant (from its own conditions). */
 export function attackAdvantage(attacker: CombatantState): Advantage {

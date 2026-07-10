@@ -4,6 +4,26 @@
 export type Ability = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 export const ABILITIES: Ability[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 
+export type Skill =
+  | 'athletics'
+  | 'acrobatics'
+  | 'sleightOfHand'
+  | 'stealth'
+  | 'arcana'
+  | 'history'
+  | 'investigation'
+  | 'nature'
+  | 'religion'
+  | 'animalHandling'
+  | 'insight'
+  | 'medicine'
+  | 'perception'
+  | 'survival'
+  | 'deception'
+  | 'intimidation'
+  | 'performance'
+  | 'persuasion';
+
 export type AbilityScores = Record<Ability, number>;
 
 export type Side = 'pc' | 'monster';
@@ -337,6 +357,8 @@ export interface Combatant {
   abilityScores: AbilityScores;
   /** abilities the combatant is proficient in for saving throws. */
   saveProficiencies: Ability[];
+  /** skills the combatant is proficient in for ability checks. */
+  skillProficiencies?: Skill[];
   /** proficiency bonus (used for saves, weapon attacks, and spell DCs). */
   proficiencyBonus: number;
   /** spellcasting ability for derived spell attack bonus and save DC. */
