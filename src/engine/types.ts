@@ -72,6 +72,8 @@ export interface SaveSpec {
 // Weapons (referenced by attack actions; values derive from the wielder)
 // ---------------------------------------------------------------------------
 
+export type WeaponMastery = 'cleave' | 'graze' | 'nick' | 'push' | 'sap' | 'slow' | 'topple' | 'vex';
+
 export type WeaponProperty =
   | 'finesse'
   | 'ranged'
@@ -95,6 +97,8 @@ export interface Weapon {
   range?: number;
   /** long range in feet; attacks beyond normal but within long are at disadvantage. */
   longRange?: number;
+  /** 2024 weapon mastery trait attached to this weapon. */
+  mastery?: WeaponMastery;
 }
 
 /** A condition to apply to a target as part of an action's effect. */

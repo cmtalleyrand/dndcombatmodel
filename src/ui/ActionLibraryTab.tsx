@@ -13,6 +13,7 @@ import type {
   TargetList,
   TargetStrategy,
   Weapon,
+  WeaponMastery,
   WeaponProperty,
 } from '../engine/types';
 import {
@@ -49,6 +50,7 @@ const DAMAGE_TYPES: DamageType[] = [
 ];
 const ABILITIES: Ability[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
 const WEAPON_PROPS: WeaponProperty[] = ['finesse', 'ranged', 'versatile', 'twoHanded', 'light', 'heavy', 'thrown'];
+const WEAPON_MASTERIES: WeaponMastery[] = ['cleave', 'graze', 'nick', 'push', 'sap', 'slow', 'topple', 'vex'];
 
 export function ActionLibraryTab({ scenario, setScenario }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -603,6 +605,7 @@ function WeaponsSection({ scenario, setScenario }: Props) {
                   </div>
                   <div className="card-stats">
                     <span className="tag">{w.damage}{w.versatileDamage ? `/${w.versatileDamage}` : ''} {w.damageType}</span>
+                    {w.mastery && <span className="tag">mastery: {w.mastery}</span>}
                     {w.properties.map((p) => <span className="tag" key={p}>{p}</span>)}
                   </div>
                   <div className="row">
@@ -645,6 +648,13 @@ function WeaponEditor({ weapon, onChange }: { weapon: Weapon; onChange: (w: Weap
         </label>
         <label>Range (ft)<input className="num" type="number" placeholder="0" value={weapon.range ?? ''} onChange={(e) => up({ range: e.target.value === '' ? undefined : +e.target.value })} /></label>
         <label>Long range<input className="num" type="number" placeholder="—" value={weapon.longRange ?? ''} onChange={(e) => up({ longRange: e.target.value === '' ? undefined : +e.target.value })} /></label>
+        <label>
+          Mastery
+          <select value={weapon.mastery ?? ''} onChange={(e) => up({ mastery: e.target.value === '' ? undefined : e.target.value as WeaponMastery })}>
+            <option value="">none</option>
+            {WEAPON_MASTERIES.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </label>
       </div>
       <div className="row">
         {WEAPON_PROPS.map((p) => (
