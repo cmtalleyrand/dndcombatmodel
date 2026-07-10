@@ -377,6 +377,8 @@ export interface Scenario {
   initiativeMode: InitiativeMode;
   /** for fixed initiative: ordered combatant ids (first acts first). */
   fixedOrder?: string[];
+  /** starting distance in feet between the front-most monster and front-most PC. */
+  encounterDistance?: number;
   /** max rounds before declaring a draw. */
   maxRounds: number;
 }

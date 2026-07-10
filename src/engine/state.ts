@@ -73,13 +73,17 @@ export function initCombatantState(c: Combatant, fallbackPosition = 0): Combatan
   };
 }
 
-/**
- * Default 1D layout when a combatant has no explicit position: monsters occupy the
- * left (rear 0 → front 30), PCs the right (front 30 → rear 45+), fronts meeting at 30.
- */
-export function defaultPosition(side: Side, indexInSide: number): number {
-  if (side === 'monster') return Math.max(0, 30 - indexInSide * 15);
-  return 30 + indexInSide * 15;
+export const DEFAULT_ENCOUNTER_DISTANCE = 30;
+export const DEFAULT_MONSTER_FRONT_POSITION = 30;
+export const DEFAULT_FORMATION_SPACING = 15;
+
+export function defaultPosition(
+  side: Side,
+  indexInSide: number,
+  encounterDistance = DEFAULT_ENCOUNTER_DISTANCE,
+): number {
+  if (side === 'monster') return Math.max(0, DEFAULT_MONSTER_FRONT_POSITION - indexInSide * DEFAULT_FORMATION_SPACING);
+  return DEFAULT_MONSTER_FRONT_POSITION + encounterDistance + indexInSide * DEFAULT_FORMATION_SPACING;
 }
 
 export function buildCombatState(scenario: Scenario): CombatState {
@@ -93,7 +97,7 @@ export function buildCombatState(scenario: Scenario): CombatState {
   const sideIndex: Record<string, number> = { pc: 0, monster: 0 };
   const combatants = scenario.combatants.map((c) => {
     const idx = sideIndex[c.side]++;
-    return initCombatantState(c, defaultPosition(c.side, idx));
+    return initCombatantState(c, defaultPosition(c.side, idx, scenario.encounterDistance));
   });
   return {
     combatants,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCombatState, defaultPosition, distance, nearest } from '../state';
+import { DEFAULT_ENCOUNTER_DISTANCE, buildCombatState, defaultPosition, distance, nearest } from '../state';
 import type { Combatant, Scenario } from '../types';
 
 function mk(id: string, side: 'pc' | 'monster', over: Partial<Combatant> = {}): Combatant {
@@ -35,12 +35,13 @@ function scenario(combatants: Combatant[]): Scenario {
 }
 
 describe('defaultPosition', () => {
-  it('places monster fronts and PC fronts meeting at 30', () => {
+  it('places each side relative to the encounter-distance gap between front combatants', () => {
     expect(defaultPosition('monster', 0)).toBe(30);
     expect(defaultPosition('monster', 1)).toBe(15);
     expect(defaultPosition('monster', 2)).toBe(0);
-    expect(defaultPosition('pc', 0)).toBe(30);
-    expect(defaultPosition('pc', 1)).toBe(45);
+    expect(defaultPosition('pc', 0)).toBe(30 + DEFAULT_ENCOUNTER_DISTANCE);
+    expect(defaultPosition('pc', 1)).toBe(45 + DEFAULT_ENCOUNTER_DISTANCE);
+    expect(defaultPosition('pc', 0, 15)).toBe(45);
   });
 });
 
@@ -49,7 +50,7 @@ describe('buildCombatState positions', () => {
     const s = scenario([mk('p1', 'pc', { position: 45 }), mk('p2', 'pc'), mk('m1', 'monster')]);
     const cs = buildCombatState(s);
     expect(cs.combatants[0].position).toBe(45); // explicit
-    expect(cs.combatants[1].position).toBe(45); // pc index 1 default
+    expect(cs.combatants[1].position).toBe(75); // pc index 1 default
     expect(cs.combatants[2].position).toBe(30); // monster index 0 default
   });
 

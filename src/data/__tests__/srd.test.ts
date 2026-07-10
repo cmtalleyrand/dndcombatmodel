@@ -12,6 +12,8 @@ import {
 import { CONDITION_KINDS } from '../../engine/conditions';
 import { SRD_WEAPONS } from '../weapons';
 import { runMany } from '../../engine/statistics';
+import { DEFAULT_ENCOUNTER_DISTANCE } from '../../engine/state';
+import type { Combatant } from '../../engine/types';
 
 describe('default scenario', () => {
   it('every combatant references only actions that exist', () => {
@@ -86,6 +88,33 @@ describe('default scenario', () => {
       expect(combatantsById.has(id)).toBe(true);
     }
     expect(s.combatants.every((combatant) => combatant.script.length > 0)).toBe(true);
+  });
+
+  it('places the default scenario and every combatant preset coherently on the linear battlefield', () => {
+    const assertFinitePositions = (combatants: Combatant[]) => {
+      for (const combatant of combatants) {
+        expect(combatant.position).toEqual(expect.any(Number));
+        expect(Number.isFinite(combatant.position)).toBe(true);
+      }
+    };
+
+    const assertEncounterDistance = (combatants: Combatant[]) => {
+      const pcs = combatants.filter((combatant) => combatant.side === 'pc');
+      const monsters = combatants.filter((combatant) => combatant.side === 'monster');
+      if (pcs.length === 0 || monsters.length === 0) return;
+
+      const pcFront = Math.min(...pcs.map((combatant) => combatant.position!));
+      const monsterFront = Math.max(...monsters.map((combatant) => combatant.position!));
+      expect(pcFront - monsterFront).toBe(DEFAULT_ENCOUNTER_DISTANCE);
+    };
+
+    const defaultCombatants = defaultScenario().combatants;
+    const presets = [...LEVEL_1_CLASS_PCS, ...LEVEL_3_CLASS_PCS, ...SAMPLE_MONSTERS];
+
+    assertFinitePositions(defaultCombatants);
+    assertFinitePositions(presets);
+    assertEncounterDistance(defaultCombatants);
+    assertEncounterDistance(presets);
   });
 
 
