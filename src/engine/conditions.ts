@@ -14,6 +14,10 @@ export interface ConditionMeta {
   attackAgainstAdvantage?: Advantage;
   /** automatically fails saving throws of these abilities. */
   autoFailSaves?: Ability[];
+  /** sets movement speed to 0 while present. */
+  speedZero?: boolean;
+  /** condition ends if its source is absent, dead, or unable to act. */
+  endsWhenSourceCannotAct?: boolean;
   /** halves bludgeoning/piercing/slashing damage taken (Rage). */
   resistPhysical?: boolean;
   description: string;
@@ -28,6 +32,14 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
     // melee attackers have advantage; abstracting to "against has advantage"
     attackAgainstAdvantage: 'advantage',
     description: 'Disadvantage on attacks; attacks against (melee) have advantage.',
+  },
+  grappled: {
+    kind: 'grappled',
+    label: 'Grappled',
+    incapacitated: false,
+    speedZero: true,
+    endsWhenSourceCannotAct: true,
+    description: 'Speed is 0; ends if the grappler is absent, dead, or unable to act.',
   },
   poisoned: {
     kind: 'poisoned',
@@ -44,6 +56,12 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
     autoFailSaves: ['str', 'dex'],
     description: 'Unconscious from sleep: incapacitated, attacks against have advantage.',
   },
+  incapacitated: {
+    kind: 'incapacitated',
+    label: 'Incapacitated',
+    incapacitated: true,
+    description: 'Cannot take actions or reactions.',
+  },
   unconscious: {
     kind: 'unconscious',
     label: 'Unconscious',
@@ -51,6 +69,14 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
     attackAgainstAdvantage: 'advantage',
     autoFailSaves: ['str', 'dex'],
     description: 'Incapacitated; attacks against have advantage and crit if within 5ft.',
+  },
+  invisible: {
+    kind: 'invisible',
+    label: 'Invisible',
+    incapacitated: false,
+    attackByAdvantage: 'advantage',
+    attackAgainstAdvantage: 'disadvantage',
+    description: 'Attacks have advantage; attacks against have disadvantage.',
   },
   blinded: {
     kind: 'blinded',
@@ -60,6 +86,18 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
     attackAgainstAdvantage: 'advantage',
     description: 'Disadvantage on attacks; attacks against have advantage.',
   },
+  charmed: {
+    kind: 'charmed',
+    label: 'Charmed',
+    incapacitated: false,
+    description: 'Source-dependent: cannot attack the charmer; social advantage is outside combat resolution.',
+  },
+  deafened: {
+    kind: 'deafened',
+    label: 'Deafened',
+    incapacitated: false,
+    description: 'Cannot hear; no attack/save modifier in the simulator.',
+  },
   restrained: {
     kind: 'restrained',
     label: 'Restrained',
@@ -67,7 +105,8 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
     attackByAdvantage: 'disadvantage',
     attackAgainstAdvantage: 'advantage',
     autoFailSaves: [],
-    description: 'Disadvantage on attacks and Dex saves; attacks against have advantage.',
+    speedZero: true,
+    description: 'Speed is 0; disadvantage on attacks and Dex saves; attacks against have advantage.',
   },
   stunned: {
     kind: 'stunned',
@@ -85,12 +124,20 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
     autoFailSaves: ['str', 'dex'],
     description: 'Incapacitated; auto-fail Str/Dex saves; attacks against have advantage.',
   },
+  petrified: {
+    kind: 'petrified',
+    label: 'Petrified',
+    incapacitated: true,
+    attackAgainstAdvantage: 'advantage',
+    autoFailSaves: ['str', 'dex'],
+    description: 'Incapacitated; auto-fail Str/Dex saves; attacks against have advantage.',
+  },
   frightened: {
     kind: 'frightened',
     label: 'Frightened',
     incapacitated: false,
     attackByAdvantage: 'disadvantage',
-    description: 'Disadvantage on attack rolls while the source is in sight.',
+    description: 'Source-dependent: disadvantage on attack rolls while the source is in sight.',
   },
   blessed: {
     kind: 'blessed',
@@ -140,4 +187,8 @@ export function isBlessed(conditions: ConditionInstance[]): boolean {
 
 export function hasCondition(conditions: ConditionInstance[], kind: ConditionKind): boolean {
   return conditions.some((c) => c.kind === kind);
+}
+
+export function effectiveSpeed(baseSpeed: number, conditions: ConditionInstance[]): number {
+  return conditions.some((c) => CONDITION_CATALOG[c.kind].speedZero) ? 0 : baseSpeed;
 }

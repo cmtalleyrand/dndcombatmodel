@@ -21,7 +21,7 @@ export const ACTION_MOVE: Action = {
   name: 'Move / Reposition',
   kind: 'move',
   targets: 0,
-  note: 'Abstract movement; uses the whole turn for now.',
+  note: 'Linear 1D movement; uses the whole turn for now.',
 };
 
 function weaponAttack(id: string, name: string, weaponId: string, overrides: Partial<Action> = {}): Action {

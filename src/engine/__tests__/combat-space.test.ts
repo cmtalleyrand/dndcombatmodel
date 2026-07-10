@@ -38,6 +38,18 @@ describe('movement / auto-approach', () => {
     expect(events.some((e) => e.message.includes('hits') || e.message.includes('miss'))).toBe(true);
   });
 
+  it('grappled combatants cannot spend linear movement to approach', () => {
+    const a = mk('a', 'pc', { position: 100, speed: 30 });
+    const b = mk('b', 'monster', { position: 0 });
+    const state = build([a, b], [swordAct], [melee]);
+    state.combatants[0].conditions.push({ kind: 'grappled', duration: { type: 'permanent' }, sourceId: 'b' });
+    const events: LogEvent[] = [];
+    performAction(state, new RNG(1), state.combatants[0], swordAct, [state.combatants[1]], events);
+    expect(state.combatants[0].position).toBe(100);
+    expect(events.some((e) => e.type === 'move')).toBe(false);
+    expect(events.some((e) => e.message.includes("can't reach"))).toBe(true);
+  });
+
   it('cannot reach a target beyond movement + reach and logs out of range', () => {
     const a = mk('a', 'pc', { position: 100, speed: 30 });
     const b = mk('b', 'monster', { position: 0 });
@@ -51,6 +63,7 @@ describe('movement / auto-approach', () => {
 });
 
 describe('ranged long-range disadvantage', () => {
+
   it('does not move when already in normal range', () => {
     const a = mk('a', 'pc', { position: 60 });
     const b = mk('b', 'monster', { position: 0 }); // 60ft, within 80 normal range
