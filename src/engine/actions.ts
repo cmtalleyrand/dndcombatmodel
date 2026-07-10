@@ -21,7 +21,7 @@ import {
   type CombatantState,
   type CombatState,
 } from './state';
-import type { Action, AoeTargets, ConditionApplication, DamageType } from './types';
+import type { Action, AoeTargets, ConditionApplication, DamageType, Feature } from './types';
 
 const BLESS_BONUS = '1d4';
 
@@ -286,6 +286,7 @@ export function performAction(
   if (action.uses !== undefined) {
     actor.usesRemaining[action.id] =
       (actor.usesRemaining[action.id] ?? action.uses) - 1;
+    actor.resources[action.id] = actor.usesRemaining[action.id];
   }
   if (action.concentration) {
     startConcentration(state, actor, action, events);
@@ -332,6 +333,39 @@ export function performAction(
       return;
     }
   }
+}
+
+
+function combatantFeatures(state: CombatState, actor: CombatantState): Feature[] {
+  return [...(actor.base.features ?? []), ...(actor.base.featureIds ?? []).map((id) => state.featuresById[id]).filter(Boolean)];
+}
+
+function legacyActionFeatures(action: Action): Feature[] {
+  const features: Feature[] = [];
+  for (let i = 0; i < (action.extraDamage?.length ?? 0); i++) {
+    features.push({ id: `${action.id}:legacyExtraDamage:${i}`, name: action.extraDamage![i].label ?? 'Extra Damage', timing: 'onHit', extraDamage: [action.extraDamage![i]] });
+  }
+  if (action.applyConditions?.length) {
+    features.push({ id: `${action.id}:legacyConditions`, name: 'Condition effect', timing: 'onHit', applyConditions: action.applyConditions });
+  }
+  return features;
+}
+
+function applicableFeatures(state: CombatState, actor: CombatantState, action: Action, timing: Feature['timing']): Feature[] {
+  return [...combatantFeatures(state, actor), ...legacyActionFeatures(action)].filter(
+    (f) => f.timing === timing && (!f.actionIds || f.actionIds.includes(action.id)),
+  );
+}
+
+function canSpendFeature(actor: CombatantState, feature: Feature): boolean {
+  if (feature.oncePerTurn && actor.featureUsedThisTurn.has(feature.id)) return false;
+  if (!feature.spend) return true;
+  return (actor.resources[feature.spend.resourceId] ?? 0) >= feature.spend.amount;
+}
+
+function spendFeature(actor: CombatantState, feature: Feature): void {
+  if (feature.oncePerTurn) actor.featureUsedThisTurn.add(feature.id);
+  if (feature.spend) actor.resources[feature.spend.resourceId] -= feature.spend.amount;
 }
 
 function blessAdvantageBonus(actor: CombatantState): { bless: boolean } {
@@ -498,6 +532,12 @@ function resolveAttack(
         rangeAdv,
       );
       let toHit = profile.toHit;
+      const preRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll').filter((f) => canSpendFeature(actor, f));
+      for (const feature of preRollFeatures) {
+        toHit += feature.attackModifier?.toHit ?? 0;
+        if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
+      }
+      let damageModifier = preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.damage ?? 0), 0);
       let blessNote = '';
       if (bless) {
         const b = rollDice(rng, BLESS_BONUS).total;
@@ -505,7 +545,27 @@ function resolveAttack(
         blessNote = ` (+${b} bless)`;
       }
       const roll = rollD20(rng, toHit, adv);
-      const hit = roll.isCrit || (!roll.isCritMiss && roll.total >= target.base.ac);
+      let rollTotal = roll.total;
+      const postRollFeatures = applicableFeatures(state, actor, action, 'afterAttackRollBeforeHitResolution');
+      for (const feature of postRollFeatures) {
+        if (!canSpendFeature(actor, feature) || roll.isCritMiss || roll.isCrit || rollTotal >= target.base.ac) continue;
+        const maximum = feature.spend?.missThreshold ?? feature.attackModifier?.toHit ?? 0;
+        if (feature.spend?.trigger === 'missWithin' && target.base.ac - rollTotal > maximum) continue;
+        const bonus = feature.attackModifier?.toHit ?? 0;
+        rollTotal += bonus;
+        spendFeature(actor, feature);
+        events.push({
+          round: state.round,
+          actorId: actor.base.id,
+          actorName: actor.base.name,
+          type: 'attack',
+          actionId: action.id,
+          targetId: target.base.id,
+          targetName: target.base.name,
+          message: `  ↳ ${feature.name}: +${bonus} to hit.`,
+        });
+      }
+      const hit = roll.isCrit || (!roll.isCritMiss && rollTotal >= target.base.ac);
 
       if (!hit) {
         events.push({
@@ -516,18 +576,35 @@ function resolveAttack(
           actionId: action.id,
           targetId: target.base.id,
           targetName: target.base.name,
-          message: `${actor.base.name} attacks ${target.base.name} with ${action.name}: rolls ${roll.total}${blessNote} vs AC ${target.base.ac} — miss.`,
+          message: `${actor.base.name} attacks ${target.base.name} with ${action.name}: rolls ${rollTotal}${blessNote} vs AC ${target.base.ac} — miss.`,
         });
         continue;
       }
 
       const isCritHit = isMeleeAutoCrit(target, gap) || roll.isCrit;
-      let dmg = rollDamageTotal(rng, profile.damageDice, profile.damageFlat, isCritHit);
+      let dmg = rollDamageTotal(rng, profile.damageDice, profile.damageFlat + damageModifier, isCritHit);
       // Conditional feature riders (Sneak Attack, Rage, Hunter's Mark…).
       const riderBonus = applyRiders(state, rng, actor, target, action, adv, gap, roll.isCrit, events);
       dmg += riderBonus;
+      const onHitFeatures = applicableFeatures(state, actor, action, 'onHit').filter((f) => canSpendFeature(actor, f));
+      for (const feature of onHitFeatures) {
+        if (feature.spend?.trigger === 'onHit' || feature.spend?.trigger === 'always') spendFeature(actor, feature);
+      }
       applyDamage(state, rng, actor, target, dmg, events, profile.damageType, isCritHit);
-      applyExtraDamage(state, rng, actor, target, action, isCritHit, events);
+      for (const feature of onHitFeatures) {
+        if (!feature.extraDamage?.length) continue;
+        for (const extra of feature.extraDamage) {
+          if (!isAlive(target)) break;
+          let extraDamage = extra.flat ?? 0;
+          if (extra.dice) extraDamage += rollDice(rng, isCritHit ? critDouble(extra.dice) : extra.dice).total;
+          applyDamage(state, rng, actor, target, extraDamage, events, extra.type, isCritHit);
+          events.push({
+            round: state.round, actorId: actor.base.id, actorName: actor.base.name, type: 'attack', actionId: action.id,
+            targetId: target.base.id, targetName: target.base.name, damage: extraDamage,
+            message: `  ↳ ${feature.name}: +${extraDamage} ${extra.type} damage.`,
+          });
+        }
+      }
       events.push({
         round: state.round,
         actorId: actor.base.id,
@@ -539,10 +616,10 @@ function resolveAttack(
         damage: dmg,
         message: `${actor.base.name} hits ${target.base.name} with ${action.name}${
           roll.isCrit ? ' (CRIT)' : ''
-        }: rolls ${roll.total}${blessNote} vs AC ${target.base.ac} — ${dmg} damage (${target.base.name} at ${target.hp} HP).`,
+        }: rolls ${rollTotal}${blessNote} vs AC ${target.base.ac} — ${dmg} damage (${target.base.name} at ${target.hp} HP).`,
       });
-      if (hit && action.applyConditions?.length) {
-        applyConditionsTo(target, actor, action.applyConditions, state, events);
+      for (const feature of onHitFeatures) {
+        if (feature.applyConditions?.length) applyConditionsTo(target, actor, feature.applyConditions, state, events);
       }
     }
   }
@@ -743,6 +820,15 @@ function resolveSpellOrAbility(
       });
     }
   }
+}
+
+export function consumeExtraActionFeature(state: CombatState, actor: CombatantState): number {
+  for (const feature of applicableFeatures(state, actor, { id: '', name: '', kind: 'ability', targets: 0 }, 'actionEconomy')) {
+    if (!feature.extraAction || !canSpendFeature(actor, feature)) continue;
+    spendFeature(actor, feature);
+    return feature.extraAction.count;
+  }
+  return 0;
 }
 
 // re-export for tests

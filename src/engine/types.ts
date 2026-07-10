@@ -193,6 +193,62 @@ export interface DamageRider {
   meleeOnly?: boolean;
 }
 
+
+// ---------------------------------------------------------------------------
+// Features and resources
+// ---------------------------------------------------------------------------
+
+export type FeatureTiming =
+  | 'precombat'
+  | 'startOfTurn'
+  | 'beforeAttackRoll'
+  | 'afterAttackRollBeforeHitResolution'
+  | 'onHit'
+  | 'afterHit'
+  | 'actionEconomy';
+
+export interface ResourcePoolDefinition {
+  id: string;
+  max: number;
+}
+
+export type FeatureSpendTrigger = 'always' | 'onHit' | 'missWithin';
+
+export interface FeatureResourceSpend {
+  resourceId: string;
+  amount: number;
+  trigger?: FeatureSpendTrigger;
+  /** For missWithin, spend only when this maximum bonus can turn the miss into a hit. */
+  missThreshold?: number;
+}
+
+export interface AttackModifierEffect {
+  toHit?: number;
+  damage?: number;
+  label?: string;
+}
+
+export interface ExtraActionEffect {
+  count: number;
+  cost?: ActionCost;
+}
+
+export interface Feature {
+  id: string;
+  name: string;
+  timing: FeatureTiming;
+  resource?: ResourcePoolDefinition;
+  spend?: FeatureResourceSpend;
+  attackModifier?: AttackModifierEffect;
+  extraDamage?: ExtraDamage[];
+  applyConditions?: ConditionApplication[];
+  extraAction?: ExtraActionEffect;
+  /** Limit this feature to specific action ids. Omitted means any attack action. */
+  actionIds?: string[];
+  /** At most once per actor turn. */
+  oncePerTurn?: boolean;
+}
+
 /**
  * A reusable action. Stored in the action library and referenced by id from
  * combatant scripts. Movement and "move" use the simulator's 1D linear battlefield.
@@ -445,6 +501,10 @@ export interface Combatant {
   spellcastingAbility?: Ability;
   /** action ids available to this combatant (from the action library). */
   actionIds: string[];
+  /** feature ids available to this combatant (from the feature library). */
+  featureIds?: string[];
+  /** inline features available only to this combatant. */
+  features?: Feature[];
   /** ordered priority script. */
   script: Rule[];
   /** spell slots by level. */
@@ -478,6 +538,8 @@ export interface Scenario {
   combatants: Combatant[];
   /** shared library of actions referenced by combatants. */
   actions: Action[];
+  /** shared library of class/species/feat features referenced by combatants. */
+  features?: Feature[];
   /** shared library of weapons referenced by attack actions. */
   weapons: Weapon[];
   /** reusable named target priority lists referenced by rules. */

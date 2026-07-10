@@ -11,6 +11,7 @@ import type {
   SpellSlots,
   TargetList,
   Weapon,
+  Feature,
 } from './types';
 import { combineAdvantage, rollD20, rollDice, type Advantage, type RNG } from './dice';
 import { savingThrowBonus } from './checks';
@@ -29,6 +30,8 @@ export interface CombatantState {
   concentratingOn?: string;
   /** remaining uses for limited-use actions, keyed by action id. */
   usesRemaining: Record<string, number>;
+  /** remaining per-combat feature resources, keyed by resource pool id. */
+  resources: Record<string, number>;
   /** temporary hit points; absorbed before real HP and never stacked (take the higher). */
   tempHp: number;
   /** true once HP <= 0 and (for monsters) dead, or (for PCs) downed/unconscious. */
@@ -45,6 +48,8 @@ export interface CombatantState {
   speed: number;
   /** rider ids/labels already used this turn (for once-per-turn riders). */
   riderUsedThisTurn: Set<string>;
+  /** feature ids already used this turn (for once-per-turn features). */
+  featureUsedThisTurn: Set<string>;
   /** feet of movement already spent this turn. */
   movedThisTurn: number;
   /** per-run tally of damage dealt / taken / healing done. */
@@ -61,16 +66,19 @@ export interface CombatState {
   actionsById: Record<string, Action>;
   weaponsById: Record<string, Weapon>;
   targetListsById: Record<string, TargetList>;
+  featuresById: Record<string, Feature>;
 }
 
 export function initCombatantState(c: Combatant, fallbackPosition = 0): CombatantState {
   const usesRemaining: Record<string, number> = {};
+  const resources: Record<string, number> = {};
   return {
     base: c,
     hp: c.maxHp,
     conditions: [],
     spellSlots: { ...c.spellSlots },
     usesRemaining,
+    resources,
     tempHp: 0,
     down: false,
     dead: false,
@@ -79,6 +87,7 @@ export function initCombatantState(c: Combatant, fallbackPosition = 0): Combatan
     position: c.position ?? fallbackPosition,
     speed: c.speed ?? 30,
     riderUsedThisTurn: new Set(),
+    featureUsedThisTurn: new Set(),
     movedThisTurn: 0,
     damageDealt: 0,
     damageTaken: 0,
@@ -106,11 +115,17 @@ export function buildCombatState(scenario: Scenario): CombatState {
   for (const w of scenario.weapons ?? []) weaponsById[w.id] = w;
   const targetListsById: Record<string, TargetList> = {};
   for (const t of scenario.targetLists ?? []) targetListsById[t.id] = t;
+  const featuresById: Record<string, Feature> = {};
+  for (const f of scenario.features ?? []) featuresById[f.id] = f;
   // assign default positions per side, by order within that side
   const sideIndex: Record<string, number> = { pc: 0, monster: 0 };
   const combatants = scenario.combatants.map((c) => {
     const idx = sideIndex[c.side]++;
-    return initCombatantState(c, defaultPosition(c.side, idx, scenario.encounterDistance));
+    const cs = initCombatantState(c, defaultPosition(c.side, idx, scenario.encounterDistance));
+    for (const f of [...(c.features ?? []), ...(c.featureIds ?? []).map((id) => featuresById[id]).filter(Boolean)]) {
+      if (f.resource) cs.resources[f.resource.id] = f.resource.max;
+    }
+    return cs;
   });
   return {
     combatants,
@@ -119,6 +134,7 @@ export function buildCombatState(scenario: Scenario): CombatState {
     actionsById,
     weaponsById,
     targetListsById,
+    featuresById,
   };
 }
 
