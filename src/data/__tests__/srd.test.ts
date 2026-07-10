@@ -12,8 +12,6 @@ import { CONDITION_KINDS } from '../../engine/conditions';
 import { runSimulation } from '../../engine/simulator';
 import { SRD_WEAPONS } from '../weapons';
 import { runMany } from '../../engine/statistics';
-import { DEFAULT_ENCOUNTER_DISTANCE } from '../../engine/state';
-import type { Combatant } from '../../engine/types';
 
 describe('default scenario', () => {
   it('every combatant references only actions that exist', () => {
@@ -56,6 +54,7 @@ describe('default scenario', () => {
       expect(weaponIds.has(action.weaponId!)).toBe(true);
     }
   });
+});
 
 const allCombatants = () => [
   ...defaultScenario().combatants,
