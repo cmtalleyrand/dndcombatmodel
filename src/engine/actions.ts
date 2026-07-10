@@ -16,18 +16,33 @@ import {
   attackAdvantage,
   distance,
   isAlive,
-  saveBonus,
+  resolveSave,
   targetAdvantage,
   type CombatantState,
   type CombatState,
 } from './state';
-import type { Action, ConditionApplication, DamageType } from './types';
+import type { Action, AoeTargets, ConditionApplication, DamageType } from './types';
 
 const BLESS_BONUS = '1d4';
 
 const PHYSICAL: DamageType[] = ['bludgeoning', 'piercing', 'slashing'];
 
-/** Apply damage to a target, handling resistance, concentration checks and death. */
+/** Combine typed resistance/immunity/vulnerability (combatant traits + conditions) into a multiplier. */
+function damageMultiplier(target: CombatantState, damageType?: DamageType): { mult: number; note: string } {
+  if (damageType && target.base.immunities?.includes(damageType)) return { mult: 0, note: ' (immune)' };
+  const physical = !!damageType && PHYSICAL.includes(damageType);
+  const resisted =
+    (!!damageType && !!target.base.resistances?.includes(damageType)) ||
+    (physical && resistsPhysical(target.conditions)) ||
+    target.conditions.some((c) => CONDITION_CATALOG[c.kind].resistAll);
+  const vulnerable = !!damageType && !!target.base.vulnerabilities?.includes(damageType);
+  if (resisted && vulnerable) return { mult: 1, note: '' }; // cancel
+  if (resisted) return { mult: 0.5, note: ' (resisted)' };
+  if (vulnerable) return { mult: 2, note: ' (vulnerable)' };
+  return { mult: 1, note: '' };
+}
+
+/** Apply damage to a target, handling resistance, temp HP, concentration checks, death, and death saves. */
 function applyDamage(
   state: CombatState,
   rng: RNG,
@@ -36,21 +51,39 @@ function applyDamage(
   amount: number,
   events: LogEvent[],
   damageType?: DamageType,
+  crit = false,
 ): void {
   if (amount <= 0) return;
-  // Physical resistance (e.g. Rage) halves bludgeoning/piercing/slashing damage.
-  if (damageType && PHYSICAL.includes(damageType) && resistsPhysical(target.conditions)) {
-    amount = Math.floor(amount / 2);
-    if (amount <= 0) return;
+  const { mult, note } = damageMultiplier(target, damageType);
+  amount = mult === 0.5 ? Math.floor(amount / 2) : Math.floor(amount * mult);
+  if (amount <= 0) {
+    if (note) {
+      events.push({
+        round: state.round,
+        actorId: source.base.id,
+        actorName: source.base.name,
+        type: 'attack',
+        targetId: target.base.id,
+        targetName: target.base.name,
+        message: `${target.base.name} is unaffected${note}.`,
+      });
+    }
+    return;
   }
-  // Petrified creatures have resistance to all damage.
-  if (target.conditions.some((c) => CONDITION_CATALOG[c.kind].resistAll)) {
-    amount = Math.floor(amount / 2);
-    if (amount <= 0) return;
+
+  const wasDown = target.down;
+
+  // Temporary HP absorbs damage first, but the full (post-resistance) amount still
+  // counts as damage taken for stats and concentration.
+  const dealt = amount;
+  if (target.tempHp > 0) {
+    const soaked = Math.min(target.tempHp, amount);
+    target.tempHp -= soaked;
+    amount -= soaked;
   }
   target.hp -= amount;
-  target.damageTaken += amount;
-  source.damageDealt += amount;
+  target.damageTaken += dealt;
+  source.damageDealt += dealt;
 
   // Taking damage wakes a sleeping creature.
   if (target.conditions.some((c) => c.kind === 'asleep')) {
@@ -68,7 +101,7 @@ function applyDamage(
 
   // Concentration check: CON save DC = max(10, floor(damage/2)).
   if (target.concentratingOn && isAlive(target)) {
-    const dc = Math.max(10, Math.floor(amount / 2));
+    const dc = Math.max(10, Math.floor(dealt / 2));
     const roll = rollSavingThrow(rng, target.base, 'con', concentrationAdvantage(target));
     if (roll.total < dc) {
       dropConcentration(state, target, events);
@@ -76,21 +109,60 @@ function applyDamage(
   }
 
   if (target.hp <= 0) {
+    const overkill = -target.hp; // how far below 0 this hit pushed them
     target.hp = 0;
-    target.down = true;
-    // dropping unconscious ends concentration
     if (target.concentratingOn) dropConcentration(state, target, events);
+    handleDropToZero(state, source, target, wasDown, overkill, crit, events);
+  }
+}
+
+/** Resolve a combatant reaching 0 HP: monsters die; PCs fall unconscious and start death saves. */
+function handleDropToZero(
+  state: CombatState,
+  source: CombatantState,
+  target: CombatantState,
+  wasDown: boolean,
+  overkill: number,
+  crit: boolean,
+  events: LogEvent[],
+): void {
+  const log = (message: string, type: LogEvent['type'] = 'death') =>
     events.push({
       round: state.round,
       actorId: source.base.id,
       actorName: source.base.name,
-      type: 'death',
+      type,
       targetId: target.base.id,
       targetName: target.base.name,
-      message: `${target.base.name} drops to 0 HP and is ${
-        target.base.side === 'monster' ? 'slain' : 'down'
-      }.`,
+      message,
     });
+
+  if (target.base.side === 'monster') {
+    target.down = true;
+    target.dead = true;
+    log(`${target.base.name} drops to 0 HP and is slain.`);
+    return;
+  }
+
+  // PC
+  if (wasDown) {
+    // A hit on an unconscious PC is 1 death-save failure (2 on a crit / auto-crit).
+    target.deathSaves.failures += crit ? 2 : 1;
+    if (target.deathSaves.failures >= 3) {
+      target.dead = true;
+      log(`${target.base.name} is struck while down and dies.`);
+    } else {
+      log(`${target.base.name} takes a hit while down (death-save failure ${target.deathSaves.failures}/3).`, 'condition');
+    }
+    return;
+  }
+
+  target.down = true;
+  if (overkill >= target.base.maxHp) {
+    target.dead = true;
+    log(`${target.base.name} takes massive damage and dies instantly.`);
+  } else {
+    log(`${target.base.name} drops to 0 HP and falls unconscious.`);
   }
 }
 
@@ -135,6 +207,18 @@ function applyConditionsTo(
   events: LogEvent[],
 ): void {
   for (const app of apps) {
+    if (target.base.conditionImmunities?.includes(app.kind)) {
+      events.push({
+        round: state.round,
+        actorId: source.base.id,
+        actorName: source.base.name,
+        type: 'condition',
+        targetId: target.base.id,
+        targetName: target.base.name,
+        message: `${target.base.name} is immune to ${CONDITION_CATALOG[app.kind].label}.`,
+      });
+      continue;
+    }
     const duration =
       app.duration.type === 'concentration'
         ? { ...app.duration, sourceId: source.base.id }
@@ -205,6 +289,17 @@ export function performAction(
   }
   if (action.concentration) {
     startConcentration(state, actor, action, events);
+  }
+
+  // Heterogeneous multiattack: perform each child action in order (e.g. bite + 2 claws).
+  if (action.sequence?.length) {
+    for (const childId of action.sequence) {
+      const child = state.actionsById[childId];
+      if (!child) continue;
+      const live = targets.filter(isAlive);
+      performAction(state, rng, actor, child, live.length ? live : targets, events);
+    }
+    return;
   }
 
   switch (action.kind) {
@@ -312,6 +407,42 @@ function applyRiders(
   return total;
 }
 
+/**
+ * Resolve an action's extra typed-damage packets against one target (each vs its own
+ * resistances). `scale` lets save-for-half effects halve (0.5) or negate (0) the extras.
+ */
+function applyExtraDamage(
+  state: CombatState,
+  rng: RNG,
+  actor: CombatantState,
+  target: CombatantState,
+  action: Action,
+  crit: boolean,
+  events: LogEvent[],
+  scale = 1,
+): void {
+  if (!action.extraDamage?.length || scale <= 0) return;
+  for (const extra of action.extraDamage) {
+    if (!isAlive(target)) break;
+    let dmg = extra.flat ?? 0;
+    if (extra.dice) dmg += rollDice(rng, crit ? critDouble(extra.dice) : extra.dice).total;
+    dmg = Math.floor(dmg * scale);
+    if (dmg <= 0) continue;
+    applyDamage(state, rng, actor, target, dmg, events, extra.type, crit);
+    events.push({
+      round: state.round,
+      actorId: actor.base.id,
+      actorName: actor.base.name,
+      type: 'attack',
+      actionId: action.id,
+      targetId: target.base.id,
+      targetName: target.base.name,
+      damage: dmg,
+      message: `  ↳ ${extra.label ?? extra.type}: +${dmg} ${extra.type} damage.`,
+    });
+  }
+}
+
 function isMeleeAutoCrit(target: CombatantState, gap: number): boolean {
   return (
     gap <= 5 &&
@@ -390,16 +521,13 @@ function resolveAttack(
         continue;
       }
 
-      let dmg = rollDamageTotal(
-        rng,
-        profile.damageDice,
-        profile.damageFlat,
-        isMeleeAutoCrit(target, gap) || roll.isCrit,
-      );
+      const isCritHit = isMeleeAutoCrit(target, gap) || roll.isCrit;
+      let dmg = rollDamageTotal(rng, profile.damageDice, profile.damageFlat, isCritHit);
       // Conditional feature riders (Sneak Attack, Rage, Hunter's Mark…).
       const riderBonus = applyRiders(state, rng, actor, target, action, adv, gap, roll.isCrit, events);
       dmg += riderBonus;
-      applyDamage(state, rng, actor, target, dmg, events, profile.damageType);
+      applyDamage(state, rng, actor, target, dmg, events, profile.damageType, isCritHit);
+      applyExtraDamage(state, rng, actor, target, action, isCritHit, events);
       events.push({
         round: state.round,
         actorId: actor.base.id,
@@ -433,15 +561,18 @@ function resolveSpellOrAbility(
   // Move toward the primary target for touch/short-range spells.
   if (targets[0] && targets[0] !== actor) approach(state, actor, targets[0], spellRange, events);
 
-  // Area of effect: hit everyone on the primary target's side within the radius.
+  // Area of effect: everyone within the radius of the center point. Damage/save spells
+  // catch both sides (friendly fire) by default; heals default to allies only.
   if (action.aoeRadius && targets[0]) {
     const center = targets[0];
-    targets = state.combatants.filter(
-      (c) =>
-        isAlive(c) &&
-        c.base.side === center.base.side &&
-        Math.abs(c.position - center.position) <= action.aoeRadius!,
-    );
+    const mode: AoeTargets = action.aoeTargets ?? (action.heal ? 'allies' : 'all');
+    targets = state.combatants.filter((c) => {
+      if (!isAlive(c)) return false;
+      if (Math.abs(c.position - center.position) > action.aoeRadius!) return false;
+      if (mode === 'allies') return c.base.side === actor.base.side;
+      if (mode === 'enemies') return c.base.side !== actor.base.side;
+      return true;
+    });
   }
 
   // Drop targets still out of range after moving (finite-range spells only).
@@ -462,14 +593,39 @@ function resolveSpellOrAbility(
     });
   }
 
+  // Temporary HP (e.g. Heroism, False Life) — takes the higher, never stacks.
+  if (action.tempHp) {
+    for (const target of targets) {
+      if (target.dead) continue;
+      const amt = rollDice(rng, action.tempHp).total;
+      if (amt > target.tempHp) target.tempHp = amt;
+      events.push({
+        round: state.round,
+        actorId: actor.base.id,
+        actorName: actor.base.name,
+        type: 'heal',
+        actionId: action.id,
+        targetId: target.base.id,
+        targetName: target.base.name,
+        message: `${actor.base.name} grants ${target.base.name} ${target.tempHp} temporary HP.`,
+      });
+    }
+    if (!action.heal && !action.damage && !action.save) return;
+  }
+
   // Healing
   if (action.heal) {
     const flat = healFlat(actor.base, action);
     for (const target of targets) {
+      if (target.dead) continue; // the dead cannot be healed
       const healAmt = rollDice(rng, action.heal).total + flat;
       const before = target.hp;
-      // healing a downed PC brings them back up
-      target.down = false;
+      // healing a downed PC brings them back up and clears death-save progress
+      if (target.down) {
+        target.down = false;
+        target.stable = false;
+        target.deathSaves = { successes: 0, failures: 0 };
+      }
       target.hp = Math.min(target.base.maxHp, target.hp + healAmt);
       const actual = target.hp - before;
       actor.healingDone += Math.max(0, actual);
@@ -499,24 +655,9 @@ function resolveSpellOrAbility(
 
     if (action.save) {
       // Saving-throw effect with a derived DC.
-      const meta = CONDITION_CATALOG;
       const ability = action.save.ability;
       const dc = spellSaveDC(actor.base, action);
-      const autoFail = target.conditions.some((c) =>
-        meta[c.kind].autoFailSaves?.includes(ability),
-      );
-      let saveTotal = 0;
-      let saved = false;
-      if (autoFail) {
-        saved = false;
-      } else {
-        let sb = saveBonus(target.base, ability);
-        if (bless) sb += rollDice(rng, BLESS_BONUS).total;
-        const adv = saveAdvantage(target, ability);
-        const roll = rollD20(rng, sb, adv);
-        saveTotal = roll.total;
-        saved = roll.total >= dc;
-      }
+      const { saved, autoFail, total: saveTotal } = resolveSave(rng, target, ability, dc);
 
       let dmg = 0;
       if (action.damage) {
@@ -524,6 +665,8 @@ function resolveSpellOrAbility(
         if (saved) dmg = action.save.onSuccess === 'half' ? Math.floor(dmg / 2) : 0;
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
+      const extraScale = saved ? (action.save.onSuccess === 'half' ? 0.5 : 0) : 1;
+      applyExtraDamage(state, rng, actor, target, action, false, events, extraScale);
       if (!saved && action.applyConditions?.length) {
         applyConditionsTo(target, actor, action.applyConditions, state, events);
       }
@@ -555,7 +698,8 @@ function resolveSpellOrAbility(
           dmgProfile.damageFlat,
           isMeleeAutoCrit(target, distance(actor, target)) || roll.isCrit,
         );
-        applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
+        applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType, roll.isCrit);
+        applyExtraDamage(state, rng, actor, target, action, roll.isCrit, events);
         if (action.applyConditions?.length) {
           applyConditionsTo(target, actor, action.applyConditions, state, events);
         }
@@ -580,6 +724,7 @@ function resolveSpellOrAbility(
         dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, false);
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
+      applyExtraDamage(state, rng, actor, target, action, false, events);
       if (action.applyConditions?.length) {
         applyConditionsTo(target, actor, action.applyConditions, state, events);
       }
@@ -600,16 +745,5 @@ function resolveSpellOrAbility(
   }
 }
 
-function saveAdvantage(target: CombatantState, ability: import('./types').Ability): Advantage {
-  // 'dodging' grants advantage on Dex saves; restrained gives disadvantage on Dex saves.
-  let adv: Advantage = 'normal';
-  if (ability === 'dex') {
-    if (target.conditions.some((c) => c.kind === 'dodging')) adv = combineAdvantage(adv, 'advantage');
-    if (target.conditions.some((c) => c.kind === 'restrained'))
-      adv = combineAdvantage(adv, 'disadvantage');
-  }
-  return adv;
-}
-
 // re-export for tests
-export { abilityMod };
+export { abilityMod, critDouble, rollDamageTotal };

@@ -10,7 +10,7 @@ import {
   buildCombatState,
   canAct,
   isAlive,
-  saveBonus,
+  resolveSave,
   type CombatantState,
   type CombatState,
 } from './state';
@@ -73,8 +73,12 @@ function aliveSides(state: CombatState): Set<Side> {
   return sides;
 }
 
-/** Process end-of-turn condition durations for a single combatant. */
-function tickConditions(state: CombatState, c: CombatantState, rng: RNG, events: LogEvent[]): void {
+/**
+ * Start-of-turn condition upkeep: decrement round-based durations and expire conditions
+ * whose source can no longer maintain them. Save-ends effects are handled at end of turn
+ * (see `tickSaveEnds`) so they get a full round of effect before the first save, per 5e.
+ */
+function tickConditions(state: CombatState, c: CombatantState, events: LogEvent[]): void {
   const kept = [];
   for (const cond of c.conditions) {
     const meta = CONDITION_CATALOG[cond.kind];
@@ -93,20 +97,87 @@ function tickConditions(state: CombatState, c: CombatantState, rng: RNG, events:
       } else {
         events.push(expireEvent(state, c, cond.kind));
       }
-    } else if (dur.type === 'saveEnds') {
-      const bonus = saveBonus(c.base, dur.ability);
-      const roll = rollD20(rng, bonus);
-      if (roll.total >= dur.dc) {
-        events.push(expireEvent(state, c, cond.kind, ` (saved ${roll.total} vs DC ${dur.dc})`));
-      } else {
-        kept.push(cond);
-      }
     } else {
-      // permanent / concentration: persist (concentration cleared elsewhere)
+      // saveEnds (rolled at end of turn), permanent, concentration: persist here.
       kept.push(cond);
     }
   }
   c.conditions = kept;
+}
+
+/**
+ * End-of-turn saving throws for save-ends conditions. Uses the shared save resolver so
+ * advantage (dodging/restrained), the target's Bless, and auto-fail conditions all apply.
+ */
+function tickSaveEnds(state: CombatState, c: CombatantState, rng: RNG, events: LogEvent[]): void {
+  const kept = [];
+  for (const cond of c.conditions) {
+    if (cond.duration.type !== 'saveEnds') {
+      kept.push(cond);
+      continue;
+    }
+    const { ability, dc } = cond.duration;
+    const { saved, total, autoFail } = resolveSave(rng, c, ability, dc);
+    if (saved) {
+      events.push(expireEvent(state, c, cond.kind, ` (saved ${total} vs DC ${dc})`));
+    } else {
+      events.push(
+        expireEventFailed(state, c, cond.kind, autoFail ? ' (auto-fails the save)' : ` (fails ${total} vs DC ${dc})`),
+      );
+      kept.push(cond);
+    }
+  }
+  c.conditions = kept;
+}
+
+/** A downed PC's death saving throw. Nat 20 revives at 1 HP; 3 successes stabilize; 3 failures kill. */
+function rollDeathSave(state: CombatState, c: CombatantState, rng: RNG, events: LogEvent[]): void {
+  const roll = rng.die(20);
+  const log = (message: string, type: LogEvent['type'] = 'condition') =>
+    events.push({ round: state.round, actorId: c.base.id, actorName: c.base.name, type, message });
+
+  if (roll === 20) {
+    c.down = false;
+    c.stable = false;
+    c.deathSaves = { successes: 0, failures: 0 };
+    c.hp = 1;
+    log(`${c.base.name} rolls a natural 20 on a death save and regains consciousness at 1 HP.`);
+    return;
+  }
+  if (roll === 1) {
+    c.deathSaves.failures += 2;
+  } else if (roll >= 10) {
+    c.deathSaves.successes += 1;
+  } else {
+    c.deathSaves.failures += 1;
+  }
+
+  if (c.deathSaves.failures >= 3) {
+    c.dead = true;
+    log(`${c.base.name} fails a third death save and dies.`, 'death');
+  } else if (c.deathSaves.successes >= 3) {
+    c.stable = true;
+    log(`${c.base.name} stabilizes.`);
+  } else {
+    log(
+      `${c.base.name} makes a death save (roll ${roll}): ${c.deathSaves.successes} successes, ${c.deathSaves.failures} failures.`,
+    );
+  }
+}
+
+function expireEventFailed(
+  state: CombatState,
+  c: CombatantState,
+  kind: import('./types').ConditionKind,
+  extra: string,
+): LogEvent {
+  return {
+    round: state.round,
+    actorId: c.base.id,
+    actorName: c.base.name,
+    type: 'condition',
+    message: `${c.base.name} is still ${CONDITION_CATALOG[kind].label}${extra}.`,
+  };
 }
 
 function expireEvent(
@@ -155,6 +226,25 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
     for (const id of state.order) {
       const actor = state.combatants.find((c) => c.base.id === id);
       if (!actor) continue;
+      if (actor.dead) continue;
+
+      // A downed-but-not-dead PC spends its turn making a death saving throw.
+      if (actor.down) {
+        if (!actor.stable && actor.hp <= 0) {
+          const eventsBeforeDs = events.length;
+          rollDeathSave(state, actor, rng, events);
+          if (recordFrames) {
+            frames.push({
+              index: frames.length,
+              round,
+              actorId: actor.base.id,
+              events: events.slice(eventsBeforeDs),
+              snapshot: snapshotState(state),
+            });
+          }
+        }
+        continue;
+      }
       if (!isAlive(actor)) continue;
 
       // Reset per-turn movement budget and once-per-turn rider usage.
@@ -166,7 +256,7 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
 
       // Conditions tick at the start of the bearer's turn: durations applied during
       // other combatants' turns (e.g. Dodge, Sleep) last a full round before resolving.
-      tickConditions(state, actor, rng, events);
+      tickConditions(state, actor, events);
 
       if (!canAct(actor)) {
         events.push({
@@ -189,7 +279,16 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
         } else {
           performAction(state, rng, actor, choice.action, choice.targets, events);
         }
+
+        // Bonus-action phase: after the main action, take one bonus-cost action if a rule fires.
+        if (isAlive(actor) && canAct(actor)) {
+          const bonus = chooseAction(state, actor, 'bonus');
+          if (bonus) performAction(state, rng, actor, bonus.action, bonus.targets, events);
+        }
       }
+
+      // Save-ends conditions roll their save at the end of the bearer's turn.
+      if (isAlive(actor)) tickSaveEnds(state, actor, rng, events);
 
       if (recordFrames) {
         frames.push({

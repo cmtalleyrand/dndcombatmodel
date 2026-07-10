@@ -83,6 +83,22 @@ export type DamageType =
   | 'psychic'
   | 'thunder';
 
+export const DAMAGE_TYPES: DamageType[] = [
+  'bludgeoning',
+  'piercing',
+  'slashing',
+  'fire',
+  'cold',
+  'lightning',
+  'acid',
+  'poison',
+  'necrotic',
+  'radiant',
+  'force',
+  'psychic',
+  'thunder',
+];
+
 export type ActionKind = 'attack' | 'spell' | 'ability' | 'dodge' | 'move';
 
 /** How targets are resolved for a save-based effect. */
@@ -121,6 +137,8 @@ export interface Weapon {
   category: 'simple' | 'martial';
   /** normal range in feet (melee reach = 5). Beyond this up to longRange = disadvantage. */
   range?: number;
+  /** melee reach in feet for reach weapons (e.g. 10 for a glaive). Melee attacks within reach have no penalty. */
+  reach?: number;
   /** long range in feet; attacks beyond normal but within long are at disadvantage. */
   longRange?: number;
   /** 2024 weapon mastery trait attached to this weapon. */
@@ -132,6 +150,23 @@ export interface ConditionApplication {
   kind: ConditionKind;
   duration: DurationKind;
 }
+
+/** An extra packet of damage of a distinct type, resolved separately against resistances. */
+export interface ExtraDamage {
+  /** extra dice, e.g. "2d6". */
+  dice?: string;
+  /** extra flat damage. */
+  flat?: number;
+  type: DamageType;
+  /** human label shown in the log, e.g. "cold". */
+  label?: string;
+}
+
+/** Which combatants an area-of-effect action affects, relative to its center target. */
+export type AoeTargets = 'all' | 'allies' | 'enemies';
+
+/** Action-economy cost: a full action (default) or a bonus action. */
+export type ActionCost = 'action' | 'bonus';
 
 /** When a damage rider's bonus applies. */
 export type RiderTrigger =
@@ -207,10 +242,16 @@ export interface Action {
   /** +N to a derived save DC. */
   saveDcBonus?: number;
 
+  // --- extra typed damage (resolved separately against resistances) ---
+  /** additional damage packets of distinct types (e.g. Ice Storm bludgeoning + cold). */
+  extraDamage?: ExtraDamage[];
+
   // --- healing ---
   heal?: string; // dice formula, e.g. "1d8"
   /** add the caster's spellcasting modifier to the heal (e.g. Cure Wounds = 1d8 + mod). */
   addSpellModToHeal?: boolean;
+  /** grant temporary HP to the target(s), dice formula e.g. "2d4"; takes the higher, never stacks. */
+  tempHp?: string;
 
   // --- conditions applied on hit / failed save ---
   applyConditions?: ConditionApplication[];
@@ -220,6 +261,8 @@ export interface Action {
   range?: number;
   /** if set, the action affects all eligible targets within this many feet of the primary target. */
   aoeRadius?: number;
+  /** which combatants an AoE affects; defaults to 'all' for damage and 'allies' for heals. */
+  aoeTargets?: AoeTargets;
   /** for 'move' actions: advance toward, or retreat from, the nearest enemy. */
   moveMode?: 'advance' | 'retreat';
 
@@ -234,6 +277,15 @@ export interface Action {
 
   /** Limited-use resource: total uses available per combat (e.g. 3). Undefined => unlimited. */
   uses?: number;
+
+  /** action economy: 'action' (default) or 'bonus'. */
+  actionCost?: ActionCost;
+
+  /** if true, the damage dice count scales with the caster's level like a 5e cantrip (tiers at 5/11/17). */
+  cantripScaling?: boolean;
+
+  /** ordered child action ids performed in sequence this turn (heterogeneous multiattack). */
+  sequence?: string[];
 
   /** Free-text note shown in UI. */
   note?: string;
@@ -256,6 +308,21 @@ export type RuleConditionType =
   | 'notConcentrating'
   | 'anyEnemyConcentrating' // an enemy is concentrating (target it to break concentration)
   | 'slotAvailable'; // requires a spell slot of the action's level
+
+export const RULE_CONDITION_TYPES: RuleConditionType[] = [
+  'always',
+  'selfHpBelowPct',
+  'anyAllyHpBelowPct',
+  'enemyCountAtLeast',
+  'enemyCountAtMost',
+  'selfHasCondition',
+  'anyEnemyHasCondition',
+  'roundAtLeast',
+  'roundAtMost',
+  'notConcentrating',
+  'anyEnemyConcentrating',
+  'slotAvailable',
+];
 
 export interface RuleCondition {
   type: RuleConditionType;
@@ -281,6 +348,19 @@ export type TargetStrategy =
   | 'allAllies'
   | 'namedThenLowestHpEnemy' // legacy alias kept for back-compat
   | 'none';
+
+export const TARGET_STRATEGIES: TargetStrategy[] = [
+  'lowestHpEnemy',
+  'highestHpEnemy',
+  'nearestEnemy',
+  'lowestHpAlly',
+  'nearestAlly',
+  'self',
+  'allEnemies',
+  'allAllies',
+  'namedThenLowestHpEnemy',
+  'none',
+];
 
 export interface TargetSelector {
   strategy: TargetStrategy;
@@ -375,6 +455,16 @@ export interface Combatant {
   position?: number;
   /** movement speed in feet per turn (default 30). */
   speed?: number;
+  /** character/monster level, used for cantrip scaling (default 1). */
+  level?: number;
+  /** damage types this combatant takes half damage from. */
+  resistances?: DamageType[];
+  /** damage types this combatant takes no damage from. */
+  immunities?: DamageType[];
+  /** damage types this combatant takes double damage from. */
+  vulnerabilities?: DamageType[];
+  /** condition kinds this combatant cannot be affected by. */
+  conditionImmunities?: ConditionKind[];
 }
 
 // ---------------------------------------------------------------------------

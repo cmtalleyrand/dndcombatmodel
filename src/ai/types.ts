@@ -1,4 +1,14 @@
-import type { Ability, AbilityScores, Action, RuleCondition, Side, SpellSlots, TargetStrategy } from '../engine/types';
+import type {
+  Ability,
+  AbilityScores,
+  Action,
+  ConditionKind,
+  DamageType,
+  RuleCondition,
+  Side,
+  SpellSlots,
+  TargetStrategy,
+} from '../engine/types';
 
 export interface AIDraftCombatant {
   name: string;
@@ -13,6 +23,11 @@ export interface AIDraftCombatant {
   spellSlots?: SpellSlots;
   position?: number;
   speed?: number;
+  level?: number;
+  resistances?: DamageType[];
+  immunities?: DamageType[];
+  vulnerabilities?: DamageType[];
+  conditionImmunities?: ConditionKind[];
 }
 
 export interface AIDraftRule {

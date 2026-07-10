@@ -5,9 +5,9 @@ import { distance, enemiesOf, isAlive, type CombatantState, type CombatState } f
 import type { LogEvent } from './log';
 import type { Action, Weapon } from './types';
 
-/** Effective range of an action in feet. Melee defaults to 0 (same 15ft block). */
+/** Effective range of an action in feet. Melee defaults to 0 (same 15ft block); reach weapons use their reach. */
 export function effectiveRange(action: Action, weapon?: Weapon): number {
-  if (action.kind === 'attack') return action.range ?? weapon?.range ?? 0;
+  if (action.kind === 'attack') return action.range ?? weapon?.range ?? weapon?.reach ?? 0;
   // spells/abilities are only range-gated when an explicit range is set
   return action.range ?? Infinity;
 }

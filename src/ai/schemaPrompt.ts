@@ -29,6 +29,11 @@ interface AIDraftCombatant {
   spellSlots?: Record<number, number>; // spell level (as a string key, e.g. "1") -> slots available
   position?: number; // feet on a single 1D battlefield axis; 0 = monster rear, higher = deeper into PC territory
   speed?: number; // feet per turn, default 30
+  level?: number; // character/monster level, used for cantrip scaling; default 1
+  resistances?: string[]; // damage types taken at half, e.g. ["bludgeoning","fire"]
+  immunities?: string[]; // damage types taken as zero
+  vulnerabilities?: string[]; // damage types taken at double
+  conditionImmunities?: string[]; // condition kinds this cannot suffer, e.g. ["poisoned","charmed"]
 }
 
 // A reusable attack/spell/ability. Prefer the simple "manual" attack/damage fields below
@@ -42,11 +47,17 @@ interface Action {
   attackCount?: number; // number of separate attack rolls this action makes (e.g. 2 for Extra Attack)
   damage?: string; // dice expression on a hit, e.g. "1d8+3"
   damageType?: string; // e.g. "slashing", "fire"
+  extraDamage?: { dice?: string; flat?: number; type: string; label?: string }[]; // extra typed damage packets, each checked against resistances (e.g. a flaming weapon's "2d6" fire)
   heal?: string; // dice expression healed, e.g. "1d8+3"; set for a healing spell/ability
+  tempHp?: string; // dice expression of temporary HP granted (e.g. "2d4"); does not stack
   save?: { ability: 'str'|'dex'|'con'|'int'|'wis'|'cha'; dc?: number; onSuccess: 'half' | 'none' }; // set for a saving-throw effect instead of an attack roll; omit dc to derive it from the caster
   range?: number; // feet; omit to use a sensible melee/ranged default
+  aoeRadius?: number; // feet; affects everyone within this radius of the primary target (damage hits both sides)
+  aoeTargets?: 'all' | 'allies' | 'enemies'; // who an AoE affects; defaults to 'all' for damage, 'allies' for heals
   spellLevel?: number; // spell slot level consumed, omit for cantrips/non-spells
   concentration?: boolean;
+  cantripScaling?: boolean; // true for a damage cantrip whose dice scale with the caster's level (5/11/17)
+  actionCost?: 'action' | 'bonus'; // 'bonus' for a bonus-action ability (e.g. Healing Word); default 'action'
   moveMode?: 'advance' | 'retreat'; // only for kind: 'move'
 }
 

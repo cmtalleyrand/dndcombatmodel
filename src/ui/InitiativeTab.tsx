@@ -1,5 +1,8 @@
 import type { Scenario } from '../engine/types';
 import { Battlefield } from './Battlefield';
+import { NumberInput } from './NumberInput';
+import { InfoHint } from './InfoHint';
+import { DEFAULT_ENCOUNTER_DISTANCE } from '../engine/state';
 
 interface Props {
   scenario: Scenario;
@@ -29,6 +32,29 @@ export function InitiativeTab({ scenario, setScenario }: Props) {
 
   return (
    <div>
+    <div className="panel">
+      <h2>Scenario</h2>
+      <div className="row">
+        <label style={{ flexGrow: 1 }}>
+          Name
+          <input value={scenario.name} onChange={(e) => setScenario({ ...scenario, name: e.target.value })} />
+        </label>
+        <label>
+          Encounter distance (ft)
+          <InfoHint>
+            Starting gap between the front-most monster and the front-most PC used to place
+            combatants on the 1D battlefield when their position is left on "auto".
+          </InfoHint>
+          <NumberInput
+            className="num"
+            min={0}
+            step={15}
+            value={scenario.encounterDistance ?? DEFAULT_ENCOUNTER_DISTANCE}
+            onChange={(n) => setScenario({ ...scenario, encounterDistance: n })}
+          />
+        </label>
+      </div>
+    </div>
     <Battlefield scenario={scenario} />
     <div className="panel">
       <h2>Initiative</h2>
@@ -51,12 +77,11 @@ export function InitiativeTab({ scenario, setScenario }: Props) {
         </label>
         <label>
           Max rounds
-          <input
+          <NumberInput
             className="num"
-            type="number"
             min={1}
             value={scenario.maxRounds}
-            onChange={(e) => setScenario({ ...scenario, maxRounds: +e.target.value })}
+            onChange={(n) => setScenario({ ...scenario, maxRounds: n })}
           />
         </label>
       </div>

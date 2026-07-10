@@ -2,6 +2,7 @@
 
 import { CONDITION_CATALOG, isIncapacitated } from './conditions';
 import type {
+  Ability,
   Action,
   Combatant,
   ConditionInstance,
@@ -11,7 +12,8 @@ import type {
   TargetList,
   Weapon,
 } from './types';
-import { combineAdvantage, type Advantage } from './dice';
+import { combineAdvantage, rollD20, rollDice, type Advantage, type RNG } from './dice';
+import { savingThrowBonus } from './checks';
 
 export function abilityMod(score: number): number {
   return Math.floor((score - 10) / 2);
@@ -27,8 +29,16 @@ export interface CombatantState {
   concentratingOn?: string;
   /** remaining uses for limited-use actions, keyed by action id. */
   usesRemaining: Record<string, number>;
-  /** true once HP <= 0 and (for monsters) dead, or (for PCs) downed. */
+  /** temporary hit points; absorbed before real HP and never stacked (take the higher). */
+  tempHp: number;
+  /** true once HP <= 0 and (for monsters) dead, or (for PCs) downed/unconscious. */
   down: boolean;
+  /** true once removed from play for good: a slain monster or a PC who failed its death saves. */
+  dead: boolean;
+  /** a downed PC who succeeded three death saves is stable and stops rolling. */
+  stable: boolean;
+  /** running death-save tally for a downed PC. */
+  deathSaves: { successes: number; failures: number };
   /** current position on the 1D battlefield (feet). */
   position: number;
   /** movement speed in feet per turn. */
@@ -61,7 +71,11 @@ export function initCombatantState(c: Combatant, fallbackPosition = 0): Combatan
     conditions: [],
     spellSlots: { ...c.spellSlots },
     usesRemaining,
+    tempHp: 0,
     down: false,
+    dead: false,
+    stable: false,
+    deathSaves: { successes: 0, failures: 0 },
     position: c.position ?? fallbackPosition,
     speed: c.speed ?? 30,
     riderUsedThisTurn: new Set(),
@@ -150,6 +164,45 @@ export function nearest(from: CombatantState, candidates: CombatantState[]): Com
 
 /** Saving throw bonus for an ability, including proficiency. */
 export { savingThrowBonus as saveBonus, abilityCheckBonus, skillCheckBonus } from './checks';
+
+/** Advantage on a saving throw of `ability` contributed by the target's own conditions. */
+export function saveAdvantage(target: CombatantState, ability: Ability): Advantage {
+  // 'dodging' grants advantage on Dex saves; restrained gives disadvantage on Dex saves.
+  let adv: Advantage = 'normal';
+  if (ability === 'dex') {
+    if (target.conditions.some((c) => c.kind === 'dodging')) adv = combineAdvantage(adv, 'advantage');
+    if (target.conditions.some((c) => c.kind === 'restrained'))
+      adv = combineAdvantage(adv, 'disadvantage');
+  }
+  return adv;
+}
+
+export interface SaveOutcome {
+  saved: boolean;
+  /** total of the roll, or 0 when auto-failed. */
+  total: number;
+  autoFail: boolean;
+}
+
+/**
+ * Resolve a saving throw for `target` against `dc`, honoring auto-fail conditions,
+ * condition-driven advantage/disadvantage, and the target's own Bless (+1d4).
+ */
+export function resolveSave(
+  rng: RNG,
+  target: CombatantState,
+  ability: Ability,
+  dc: number,
+): SaveOutcome {
+  const autoFail = target.conditions.some((c) =>
+    CONDITION_CATALOG[c.kind].autoFailSaves?.includes(ability),
+  );
+  if (autoFail) return { saved: false, total: 0, autoFail: true };
+  let bonus = savingThrowBonus(target.base, ability);
+  if (target.conditions.some((c) => c.kind === 'blessed')) bonus += rollDice(rng, '1d4').total;
+  const roll = rollD20(rng, bonus, saveAdvantage(target, ability));
+  return { saved: roll.total >= dc, total: roll.total, autoFail: false };
+}
 
 /** Advantage state for an attack roll made BY this combatant (from its own conditions). */
 export function attackAdvantage(attacker: CombatantState): Advantage {

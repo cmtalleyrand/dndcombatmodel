@@ -9,7 +9,7 @@ import {
   type CombatState,
 } from './state';
 import { resolveTargets } from './targeting';
-import type { Action, Rule, RuleCondition } from './types';
+import type { Action, ActionCost, Rule, RuleCondition } from './types';
 
 export interface ChosenAction {
   rule: Rule;
@@ -96,23 +96,27 @@ export function actionAvailable(actor: CombatantState, action: Action): boolean 
 /** Number of targets an action wants. */
 function targetCount(action: Action): number {
   if (action.kind === 'dodge' || action.kind === 'move') return 0;
-  // an attack with attackCount makes multiple swings at `targets` distinct targets
+  // `targets` is the number of distinct targets; each is attacked `attackCount` times
+  // (so 2 targets with attackCount 2 = 4 attack rolls total).
   return Math.max(1, action.targets);
 }
 
 /**
  * Choose the first rule (by ascending priority) whose condition passes, whose
- * action is available, and which resolves to at least one legal target (unless
- * the action needs no target). Returns undefined if nothing applies.
+ * action is available for the given economy `cost` (default: a full action), and
+ * which resolves to at least one legal target (unless the action needs no target).
+ * Returns undefined if nothing applies.
  */
 export function chooseAction(
   state: CombatState,
   actor: CombatantState,
+  cost: ActionCost = 'action',
 ): ChosenAction | undefined {
   const rules = [...actor.base.script].sort((a, b) => a.priority - b.priority);
   for (const rule of rules) {
     const action = state.actionsById[rule.actionId];
     if (!action) continue;
+    if ((action.actionCost ?? 'action') !== cost) continue;
     if (!actionAvailable(actor, action)) continue;
     if (!evaluateCondition(state, actor, rule.condition, action)) continue;
 

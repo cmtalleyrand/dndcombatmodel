@@ -11,7 +11,8 @@
   /* Text — aged parchment */
   --text: #ece3d2;
   --muted: #a99e8b;
-  --faint: #7c7160;
+  /* raised from #7c7160 for better contrast on the dark surfaces (WCAG AA on small text) */
+  --faint: #978a75;
 
   /* Brand — gilded gold + dragon crimson */
   --gold: #cda349;
@@ -1357,4 +1358,49 @@ td.num, th.num {
   .dmg-name { width: 5rem; }
   .card-grid { grid-template-columns: 1fr; }
   .menu-panel-right, .info-popover { right: 0; left: auto; width: min(300px, calc(100vw - 2rem)); }
+}
+
+/* --- Wave 4: run progress, stale banner, run history --- */
+.progress-track {
+  height: 10px;
+  background: var(--panel-3);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--gold-bright));
+  transition: width 0.15s ease;
+}
+.stale-banner {
+  margin: 0.9rem 0;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--warning);
+  background: rgba(217, 138, 61, 0.12);
+  color: var(--warning-soft);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.history-table th, .history-table td {
+  text-align: left;
+  padding: 0.35rem 0.7rem;
+  border-bottom: 1px solid var(--border-soft);
+  white-space: nowrap;
+}
+.history-table th { color: var(--muted); font-weight: 600; }
+
+/* Respect users who prefer reduced motion: still the ambient animations. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

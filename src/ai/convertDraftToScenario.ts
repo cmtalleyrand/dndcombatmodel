@@ -51,6 +51,11 @@ export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
       spellSlots: entry.spellSlots ?? {},
       position: entry.position,
       speed: entry.speed,
+      level: entry.level,
+      resistances: entry.resistances,
+      immunities: entry.immunities,
+      vulnerabilities: entry.vulnerabilities,
+      conditionImmunities: entry.conditionImmunities,
     };
   };
 
