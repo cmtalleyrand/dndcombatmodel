@@ -62,16 +62,27 @@ describe('movement / auto-approach', () => {
   });
 });
 
-describe('ranged long-range disadvantage', () => {
+describe('ranged range maintenance', () => {
 
-  it('does not move when already in normal range', () => {
+  it('uses remaining movement after a ranged attack to retreat to normal range', () => {
     const a = mk('a', 'pc', { position: 60 });
     const b = mk('b', 'monster', { position: 0 }); // 60ft, within 80 normal range
     const state = build([a, b], [bowAct], [bow]);
     const events: LogEvent[] = [];
     performAction(state, new RNG(5), state.combatants[0], bowAct, [state.combatants[1]], events);
-    expect(state.combatants[0].position).toBe(60);
-    expect(events.some((e) => e.type === 'move')).toBe(false);
+    expect(state.combatants[0].position).toBe(80);
+    expect(events.some((e) => e.type === 'move' && e.message.includes('retreats 20ft'))).toBe(true);
+  });
+
+  it('uses only movement left after approaching before a ranged attack', () => {
+    const a = mk('a', 'pc', { position: 120, speed: 30 });
+    const b = mk('b', 'monster', { position: 0 });
+    const state = build([a, b], [bowAct], [bow]);
+    const events: LogEvent[] = [];
+    performAction(state, new RNG(5), state.combatants[0], bowAct, [state.combatants[1]], events);
+    expect(state.combatants[0].position).toBe(90);
+    expect(state.combatants[0].movedThisTurn).toBe(30);
+    expect(events.filter((e) => e.type === 'move')).toHaveLength(1);
   });
 });
 
