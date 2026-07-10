@@ -59,13 +59,20 @@ deployed as a static site to GitHub Pages.
   representative round-by-round narrative.
 - **Save & reuse:** scenarios persist to `localStorage` and can be exported/imported
   as JSON.
+- **AI authoring:** describe an encounter in plain language on the **AI Authoring**
+  tab and an LLM (Claude or ChatGPT, using your own API key) drafts the PCs,
+  enemies, actions, and priority scripts for you. You review the draft, ask for
+  revisions, and only then approve it into an editable scenario — the model never
+  writes directly into your combat state. Your API key is stored in its own
+  `localStorage` bucket and is never included in a scenario or bundle export.
 
-## What the simulator does *not* model yet
+## Scope
 
-Reactions (opportunity attacks, Shield, Counterspell), 2D positioning and area geometry
-(space is modelled as a 1D line), and finer rules edge cases (legendary actions, full
-resistance/immunity matrices beyond physical resistance, death-save detail). These are
-intentionally deferred — see the in-app notes and the plan.
+**2D positioning deferred:** Space is modelled as linear 1D space as a deliberate simplification.
+
+**Not modeled yet, but on the roadmap:** reactions (opportunity attacks, Shield,
+Counterspell), legendary actions, a full resistance/immunity matrix beyond physical
+resistance, and finer death-save detail. See the in-app notes and the plan.
 
 ## Getting started
 
@@ -113,9 +120,13 @@ src/
     types.ts dice.ts conditions.ts state.ts targeting.ts
     actions.ts rules.ts simulator.ts statistics.ts log.ts
   data/srd.ts  # curated actions, sample PCs/monsters, default scenario
+  ai/          # natural-language -> scenario draft (AI Authoring tab)
   state/store.ts  # localStorage persistence + JSON import/export
   ui/          # React components (tabs, editors, rule builder, results)
 ```
 
 The engine is intentionally framework-free so it can be tested in isolation and
 reused; the React layer only renders state and invokes `runMany()`.
+
+See `CLAUDE.md` for architecture invariants and scope notes if you're developing
+here with Claude Code.
