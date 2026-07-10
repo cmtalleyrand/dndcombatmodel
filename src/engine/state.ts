@@ -29,8 +29,16 @@ export interface CombatantState {
   concentratingOn?: string;
   /** remaining uses for limited-use actions, keyed by action id. */
   usesRemaining: Record<string, number>;
-  /** true once HP <= 0 and (for monsters) dead, or (for PCs) downed. */
+  /** temporary hit points; absorbed before real HP and never stacked (take the higher). */
+  tempHp: number;
+  /** true once HP <= 0 and (for monsters) dead, or (for PCs) downed/unconscious. */
   down: boolean;
+  /** true once removed from play for good: a slain monster or a PC who failed its death saves. */
+  dead: boolean;
+  /** a downed PC who succeeded three death saves is stable and stops rolling. */
+  stable: boolean;
+  /** running death-save tally for a downed PC. */
+  deathSaves: { successes: number; failures: number };
   /** current position on the 1D battlefield (feet). */
   position: number;
   /** movement speed in feet per turn. */
@@ -63,7 +71,11 @@ export function initCombatantState(c: Combatant, fallbackPosition = 0): Combatan
     conditions: [],
     spellSlots: { ...c.spellSlots },
     usesRemaining,
+    tempHp: 0,
     down: false,
+    dead: false,
+    stable: false,
+    deathSaves: { successes: 0, failures: 0 },
     position: c.position ?? fallbackPosition,
     speed: c.speed ?? 30,
     riderUsedThisTurn: new Set(),

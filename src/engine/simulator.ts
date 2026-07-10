@@ -130,6 +130,41 @@ function tickSaveEnds(state: CombatState, c: CombatantState, rng: RNG, events: L
   c.conditions = kept;
 }
 
+/** A downed PC's death saving throw. Nat 20 revives at 1 HP; 3 successes stabilize; 3 failures kill. */
+function rollDeathSave(state: CombatState, c: CombatantState, rng: RNG, events: LogEvent[]): void {
+  const roll = rng.die(20);
+  const log = (message: string, type: LogEvent['type'] = 'condition') =>
+    events.push({ round: state.round, actorId: c.base.id, actorName: c.base.name, type, message });
+
+  if (roll === 20) {
+    c.down = false;
+    c.stable = false;
+    c.deathSaves = { successes: 0, failures: 0 };
+    c.hp = 1;
+    log(`${c.base.name} rolls a natural 20 on a death save and regains consciousness at 1 HP.`);
+    return;
+  }
+  if (roll === 1) {
+    c.deathSaves.failures += 2;
+  } else if (roll >= 10) {
+    c.deathSaves.successes += 1;
+  } else {
+    c.deathSaves.failures += 1;
+  }
+
+  if (c.deathSaves.failures >= 3) {
+    c.dead = true;
+    log(`${c.base.name} fails a third death save and dies.`, 'death');
+  } else if (c.deathSaves.successes >= 3) {
+    c.stable = true;
+    log(`${c.base.name} stabilizes.`);
+  } else {
+    log(
+      `${c.base.name} makes a death save (roll ${roll}): ${c.deathSaves.successes} successes, ${c.deathSaves.failures} failures.`,
+    );
+  }
+}
+
 function expireEventFailed(
   state: CombatState,
   c: CombatantState,
@@ -191,6 +226,25 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
     for (const id of state.order) {
       const actor = state.combatants.find((c) => c.base.id === id);
       if (!actor) continue;
+      if (actor.dead) continue;
+
+      // A downed-but-not-dead PC spends its turn making a death saving throw.
+      if (actor.down) {
+        if (!actor.stable && actor.hp <= 0) {
+          const eventsBeforeDs = events.length;
+          rollDeathSave(state, actor, rng, events);
+          if (recordFrames) {
+            frames.push({
+              index: frames.length,
+              round,
+              actorId: actor.base.id,
+              events: events.slice(eventsBeforeDs),
+              snapshot: snapshotState(state),
+            });
+          }
+        }
+        continue;
+      }
       if (!isAlive(actor)) continue;
 
       // Reset per-turn movement budget and once-per-turn rider usage.
@@ -224,6 +278,12 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
           });
         } else {
           performAction(state, rng, actor, choice.action, choice.targets, events);
+        }
+
+        // Bonus-action phase: after the main action, take one bonus-cost action if a rule fires.
+        if (isAlive(actor) && canAct(actor)) {
+          const bonus = chooseAction(state, actor, 'bonus');
+          if (bonus) performAction(state, rng, actor, bonus.action, bonus.targets, events);
         }
       }
 

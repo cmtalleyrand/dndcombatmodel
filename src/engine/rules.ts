@@ -9,7 +9,7 @@ import {
   type CombatState,
 } from './state';
 import { resolveTargets } from './targeting';
-import type { Action, Rule, RuleCondition } from './types';
+import type { Action, ActionCost, Rule, RuleCondition } from './types';
 
 export interface ChosenAction {
   rule: Rule;
@@ -103,17 +103,20 @@ function targetCount(action: Action): number {
 
 /**
  * Choose the first rule (by ascending priority) whose condition passes, whose
- * action is available, and which resolves to at least one legal target (unless
- * the action needs no target). Returns undefined if nothing applies.
+ * action is available for the given economy `cost` (default: a full action), and
+ * which resolves to at least one legal target (unless the action needs no target).
+ * Returns undefined if nothing applies.
  */
 export function chooseAction(
   state: CombatState,
   actor: CombatantState,
+  cost: ActionCost = 'action',
 ): ChosenAction | undefined {
   const rules = [...actor.base.script].sort((a, b) => a.priority - b.priority);
   for (const rule of rules) {
     const action = state.actionsById[rule.actionId];
     if (!action) continue;
+    if ((action.actionCost ?? 'action') !== cost) continue;
     if (!actionAvailable(actor, action)) continue;
     if (!evaluateCondition(state, actor, rule.condition, action)) continue;
 

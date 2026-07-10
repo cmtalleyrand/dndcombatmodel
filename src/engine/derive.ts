@@ -16,6 +16,20 @@ export function attackAbility(c: Combatant, action: Action, weapon?: Weapon): Ab
   return 'str';
 }
 
+/** 5e cantrip damage tier: 1 die below level 5, then +1 at levels 5, 11, and 17. */
+export function cantripTier(level = 1): number {
+  return 1 + (level >= 5 ? 1 : 0) + (level >= 11 ? 1 : 0) + (level >= 17 ? 1 : 0);
+}
+
+/** Multiply the dice count of a `NdM(+K)` formula by `factor` (leaving sides + modifier). */
+function scaleFormulaDice(formula: string, factor: number): string {
+  if (factor <= 1) return formula;
+  const m = /^(\d*)d(\d+)([+-]\d+)?$/.exec(formula.replace(/\s+/g, '').toLowerCase());
+  if (!m) return formula;
+  const count = (m[1] === '' ? 1 : parseInt(m[1], 10)) * factor;
+  return `${count}d${m[2]}${m[3] ?? ''}`;
+}
+
 export interface AttackProfile {
   toHit: number;
   /** rollable dice formulas (each may carry its own flat, e.g. legacy "1d8+3"). */
@@ -36,13 +50,15 @@ export function resolveAttackProfile(c: Combatant, action: Action, weapon?: Weap
   const toHitAdj = (action.toHitBonus ?? 0) + (action.magicBonus ?? 0);
   const dmgAdj = (action.damageBonus ?? 0) + (action.magicBonus ?? 0);
 
+  const tier = action.cantripScaling ? cantripTier(c.level) : 1;
+
   if (weapon) {
     const ability = attackAbility(c, action, weapon);
     const mod = abilityMod(c.abilityScores[ability]);
     const prof = action.notProficient ? 0 : c.proficiencyBonus;
     const baseDie =
       action.useVersatile && weapon.versatileDamage ? weapon.versatileDamage : weapon.damage;
-    const damageDice = [baseDie];
+    const damageDice = [scaleFormulaDice(baseDie, tier)];
     if (action.bonusDamageDice) damageDice.push(action.bonusDamageDice);
     return {
       toHit: mod + prof + toHitAdj,
@@ -54,7 +70,7 @@ export function resolveAttackProfile(c: Combatant, action: Action, weapon?: Weap
   }
 
   // Legacy / manual attack: explicit numbers, adjustments still additive.
-  const damageDice = action.damage ? [action.damage] : [];
+  const damageDice = action.damage ? [scaleFormulaDice(action.damage, tier)] : [];
   if (action.bonusDamageDice) damageDice.push(action.bonusDamageDice);
   return {
     toHit: (action.attackBonus ?? 0) + toHitAdj,
