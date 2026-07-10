@@ -13,10 +13,10 @@ export function Battlefield({ scenario }: Props) {
     const sideIndex: Record<string, number> = { pc: 0, monster: 0 };
     return scenario.combatants.map((c) => {
       const idx = sideIndex[c.side]++;
-      const pos = c.position ?? defaultPosition(c.side, idx);
+      const pos = c.position ?? defaultPosition(c.side, idx, scenario.encounterDistance);
       return { id: c.id, name: c.name, side: c.side, pos };
     });
-  }, [scenario.combatants]);
+  }, [scenario.combatants, scenario.encounterDistance]);
 
   if (placed.length === 0) return null;
 

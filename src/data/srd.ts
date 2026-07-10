@@ -1,8 +1,12 @@
 // Curated SRD-flavored content: a reusable action library, sample PCs and monsters,
 // and a default scenario that demonstrates scripting (priorities, conditions, targets).
 
+import { DEFAULT_ENCOUNTER_DISTANCE, defaultPosition } from '../engine/state';
 import type { Action, Combatant, ConditionPreset, RuleTemplate, Scenario } from '../engine/types';
 import { SRD_WEAPONS } from './weapons';
+
+const defaultPcPosition = (rankFromFront: number) => defaultPosition('pc', rankFromFront, DEFAULT_ENCOUNTER_DISTANCE);
+const defaultMonsterPosition = (rankFromFront: number) => defaultPosition('monster', rankFromFront, DEFAULT_ENCOUNTER_DISTANCE);
 
 // ---------------------------------------------------------------------------
 // Action library
@@ -712,7 +716,7 @@ export const SAMPLE_PCS: Combatant[] = [
     saveProficiencies: ['wis', 'cha'],
     proficiencyBonus: 2,
     spellcastingAbility: 'wis',
-    position: 30,
+    position: defaultPcPosition(0),
     speed: 30,
     actionIds: ['act-cure-wounds', 'act-bless', 'act-mace'],
     spellSlots: { 1: 4 },
@@ -749,7 +753,7 @@ export const SAMPLE_PCS: Combatant[] = [
     abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 10 },
     saveProficiencies: ['str', 'con'],
     proficiencyBonus: 2,
-    position: 30,
+    position: defaultPcPosition(0),
     speed: 30,
     actionIds: ['act-longsword-2x'],
     spellSlots: {},
@@ -773,7 +777,7 @@ export const SAMPLE_PCS: Combatant[] = [
     saveProficiencies: ['int', 'wis'],
     proficiencyBonus: 2,
     spellcastingAbility: 'int',
-    position: 45,
+    position: defaultPcPosition(1),
     speed: 30,
     actionIds: ['act-sleep', 'act-magic-missile', 'act-fire-bolt'],
     spellSlots: { 1: 4 },
@@ -812,7 +816,7 @@ export const SAMPLE_PCS: Combatant[] = [
     saveProficiencies: ['str', 'dex'],
     proficiencyBonus: 2,
     spellcastingAbility: 'wis',
-    position: 45,
+    position: defaultPcPosition(1),
     speed: 30,
     actionIds: ['act-hunters-mark', 'act-longbow-hunters-mark'],
     spellSlots: { 1: 3 },
@@ -842,7 +846,7 @@ export const SAMPLE_PCS: Combatant[] = [
     abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 },
     saveProficiencies: ['str', 'con'],
     proficiencyBonus: 2,
-    position: 30,
+    position: defaultPcPosition(0),
     speed: 40,
     actionIds: ['act-rage', 'act-greataxe-rage'],
     spellSlots: {},
@@ -872,7 +876,7 @@ export const SAMPLE_PCS: Combatant[] = [
     abilityScores: { str: 10, dex: 16, con: 12, int: 12, wis: 13, cha: 14 },
     saveProficiencies: ['dex', 'int'],
     proficiencyBonus: 2,
-    position: 45,
+    position: defaultPcPosition(1),
     speed: 30,
     actionIds: ['act-rogue-shortbow'],
     spellSlots: {},
@@ -914,7 +918,7 @@ function makeLibraryPc(spec: LibraryPcSpec): Combatant {
     saveProficiencies: spec.saveProficiencies,
     proficiencyBonus: 2,
     spellcastingAbility: spec.spellcastingAbility,
-    position: 45,
+    position: defaultPcPosition(1),
     speed: spec.className === 'Monk' || spec.className === 'Barbarian' ? 40 : 30,
     actionIds: spec.actionIds,
     spellSlots: spec.spellSlots ?? {},
@@ -955,7 +959,7 @@ export const LEVEL_3_CLASS_PCS: Combatant[] = [
 // Sample monsters
 // ---------------------------------------------------------------------------
 
-export function makeGoblin(id: string, name: string, position = 30): Combatant {
+export function makeGoblin(id: string, name: string, position = defaultMonsterPosition(0)): Combatant {
   return {
     id,
     name,
@@ -981,7 +985,7 @@ export function makeGoblin(id: string, name: string, position = 30): Combatant {
   };
 }
 
-export function makeOrc(id: string, name: string, position = 15): Combatant {
+export function makeOrc(id: string, name: string, position = defaultMonsterPosition(1)): Combatant {
   return {
     id,
     name,
@@ -1008,7 +1012,7 @@ export function makeOrc(id: string, name: string, position = 15): Combatant {
 }
 
 
-export function makeSkeleton(id: string, name: string, position = 0): Combatant {
+export function makeSkeleton(id: string, name: string, position = defaultMonsterPosition(2)): Combatant {
   return {
     id,
     name,
@@ -1034,7 +1038,7 @@ export function makeSkeleton(id: string, name: string, position = 0): Combatant 
   };
 }
 
-export function makeWolf(id: string, name: string, position = 15): Combatant {
+export function makeWolf(id: string, name: string, position = defaultMonsterPosition(1)): Combatant {
   return {
     id,
     name,
@@ -1060,7 +1064,7 @@ export function makeWolf(id: string, name: string, position = 15): Combatant {
   };
 }
 
-export function makeOgre(id: string, name: string, position = 0): Combatant {
+export function makeOgre(id: string, name: string, position = defaultMonsterPosition(2)): Combatant {
   return {
     id,
     name,
@@ -1110,7 +1114,7 @@ function makeLibraryMonster(spec: LibraryMonsterSpec): Combatant {
     abilityScores: spec.abilityScores,
     saveProficiencies: [],
     proficiencyBonus: 2,
-    position: spec.position ?? 0,
+    position: spec.position ?? defaultMonsterPosition(0),
     speed: spec.speed ?? 30,
     actionIds: spec.actionIds,
     spellSlots: {},
@@ -1180,6 +1184,7 @@ export function defaultScenario(): Scenario {
     ruleLibrary: DEFAULT_RULE_LIBRARY,
     conditionLibrary: DEFAULT_CONDITION_LIBRARY,
     initiativeMode: 'rolled',
+    encounterDistance: DEFAULT_ENCOUNTER_DISTANCE,
     maxRounds: 30,
   };
 }

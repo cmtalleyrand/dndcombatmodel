@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ABILITIES, type Ability, type Combatant, type Scenario, type Side } from '../engine/types';
 import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS } from '../data/srd';
 import { copyScript, genId, removeCombatant, upsertCombatant } from '../state/store';
+import { defaultPosition } from '../engine/state';
 import { RuleBuilder } from './RuleBuilder';
 import { describeAction } from './describe';
 import { InfoHint } from './InfoHint';
@@ -24,7 +25,7 @@ function blankCombatant(side: Side): Combatant {
     abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
     saveProficiencies: [],
     proficiencyBonus: 2,
-    position: side === 'pc' ? 45 : 0,
+    position: defaultPosition(side, 0),
     speed: 30,
     actionIds: [actionId],
     script: [
