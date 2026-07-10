@@ -56,11 +56,10 @@ Engine internals, if you need to trace a turn: `simulator.ts` drives the round l
   `Math.random()` inside the engine (UI-only id generation in `state/store.ts`'s
   `genId` is the one sanctioned exception, since it doesn't affect simulation
   results).
-- **Linear (1D) battlefield only, permanently.** Positioning is a single feet-based
+- **Linear (1D) battlefield** Positioning is a single feet-based
   axis (`Combatant.position`, `Action.range`, `Action.aoeRadius`). This is a
-  deliberate, permanent simplification — **do not introduce 2D/grid positioning or
-  area geometry.** If asked to improve range/AoE/movement, do it within the linear
-  model.
+  deliberate simplification — 2D/grid positioning is deferred to a later stage. If asked to
+  improve range/AoE/movement, do it within the linear model.
 - **Scenario is plain, serializable JSON** (`Scenario` in `engine/types.ts`),
   persisted to `localStorage` and exportable/importable as-is. When you add a new
   field to `Scenario`/`Combatant`/etc., add a back-compat default for it in
@@ -79,8 +78,6 @@ Engine internals, if you need to trace a turn: `simulator.ts` drives the round l
 
 ## Scope boundaries (settled; don't relitigate without asking)
 
-- **2D positioning is out of scope, permanently.** The linear battlefield is an
-  intentional abstraction, not a placeholder for a future 2D system.
 - **Reactions (opportunity attacks, Shield, Counterspell), legendary actions, a full
   resistance/immunity matrix, and death-save detail are not modeled yet, but they
   are roadmap items**, not rejected features. When touching turn resolution or the
