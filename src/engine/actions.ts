@@ -291,6 +291,17 @@ export function performAction(
     startConcentration(state, actor, action, events);
   }
 
+  // Heterogeneous multiattack: perform each child action in order (e.g. bite + 2 claws).
+  if (action.sequence?.length) {
+    for (const childId of action.sequence) {
+      const child = state.actionsById[childId];
+      if (!child) continue;
+      const live = targets.filter(isAlive);
+      performAction(state, rng, actor, child, live.length ? live : targets, events);
+    }
+    return;
+  }
+
   switch (action.kind) {
     case 'move': {
       reposition(state, actor, action.moveMode ?? 'advance', events);
@@ -396,7 +407,10 @@ function applyRiders(
   return total;
 }
 
-/** Resolve an action's extra typed-damage packets against one target (each vs its own resistances). */
+/**
+ * Resolve an action's extra typed-damage packets against one target (each vs its own
+ * resistances). `scale` lets save-for-half effects halve (0.5) or negate (0) the extras.
+ */
 function applyExtraDamage(
   state: CombatState,
   rng: RNG,
@@ -405,12 +419,14 @@ function applyExtraDamage(
   action: Action,
   crit: boolean,
   events: LogEvent[],
+  scale = 1,
 ): void {
-  if (!action.extraDamage?.length) return;
+  if (!action.extraDamage?.length || scale <= 0) return;
   for (const extra of action.extraDamage) {
     if (!isAlive(target)) break;
     let dmg = extra.flat ?? 0;
     if (extra.dice) dmg += rollDice(rng, crit ? critDouble(extra.dice) : extra.dice).total;
+    dmg = Math.floor(dmg * scale);
     if (dmg <= 0) continue;
     applyDamage(state, rng, actor, target, dmg, events, extra.type, crit);
     events.push({
@@ -649,7 +665,8 @@ function resolveSpellOrAbility(
         if (saved) dmg = action.save.onSuccess === 'half' ? Math.floor(dmg / 2) : 0;
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
-      if (!saved) applyExtraDamage(state, rng, actor, target, action, false, events);
+      const extraScale = saved ? (action.save.onSuccess === 'half' ? 0.5 : 0) : 1;
+      applyExtraDamage(state, rng, actor, target, action, false, events, extraScale);
       if (!saved && action.applyConditions?.length) {
         applyConditionsTo(target, actor, action.applyConditions, state, events);
       }

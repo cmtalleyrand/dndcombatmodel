@@ -46,8 +46,9 @@ describe('default scenario', () => {
 
     const weaponIds = new Set(SRD_WEAPONS.map((w) => w.id));
     const attackWeaponIds = new Set(SRD_ACTIONS.filter((a) => a.kind === 'attack').map((a) => a.weaponId));
+    // Every weapon except the Net (which has no 2024 mastery) carries a mastery trait.
     for (const weapon of SRD_WEAPONS) {
-      expect(weapon.mastery).toBeTruthy();
+      if (weapon.id !== 'wpn-net') expect(weapon.mastery).toBeTruthy();
       expect(attackWeaponIds.has(weapon.id)).toBe(true);
     }
     for (const action of SRD_ACTIONS.filter((a) => a.kind === 'attack' && a.weaponId)) {
