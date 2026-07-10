@@ -27,7 +27,7 @@ export function describeAction(
   weaponsById: Record<string, Weapon>,
 ): string {
   if (action.kind === 'dodge') return 'Dodge — attackers have disadvantage.';
-  if (action.kind === 'move') return 'Move / reposition (abstract).';
+  if (action.kind === 'move') return 'Move / reposition on the 1D battlefield.';
 
   if (action.kind === 'attack') {
     const weapon = action.weaponId ? weaponsById[action.weaponId] : undefined;

@@ -77,6 +77,14 @@ function aliveSides(state: CombatState): Set<Side> {
 function tickConditions(state: CombatState, c: CombatantState, rng: RNG, events: LogEvent[]): void {
   const kept = [];
   for (const cond of c.conditions) {
+    const meta = CONDITION_CATALOG[cond.kind];
+    if (meta.endsWhenSourceCannotAct && cond.sourceId) {
+      const source = state.combatants.find((x) => x.base.id === cond.sourceId);
+      if (!source || !isAlive(source) || !canAct(source)) {
+        events.push(expireEvent(state, c, cond.kind, ' (source cannot maintain it)'));
+        continue;
+      }
+    }
     const dur = cond.duration;
     if (dur.type === 'rounds') {
       const remaining = dur.rounds - 1;

@@ -1,5 +1,6 @@
 // Linear movement on the 1D battlefield: approaching targets and explicit repositioning.
 
+import { effectiveSpeed } from './conditions';
 import { distance, enemiesOf, isAlive, type CombatantState, type CombatState } from './state';
 import type { LogEvent } from './log';
 import type { Action, Weapon } from './types';
@@ -23,7 +24,7 @@ export function approach(
   const gap = distance(actor, target);
   if (gap <= range) return;
   const need = gap - range;
-  const avail = actor.speed - actor.movedThisTurn;
+  const avail = effectiveSpeed(actor.speed, actor.conditions) - actor.movedThisTurn;
   const step = Math.min(need, avail);
   if (step <= 0) return;
   const dir = target.position >= actor.position ? 1 : -1;
@@ -52,7 +53,7 @@ export function reposition(
   // nearest enemy
   let foe = foes[0];
   for (const f of foes) if (distance(actor, f) < distance(actor, foe)) foe = f;
-  const avail = actor.speed - actor.movedThisTurn;
+  const avail = effectiveSpeed(actor.speed, actor.conditions) - actor.movedThisTurn;
   if (avail <= 0) return;
   const toward = foe.position >= actor.position ? 1 : -1;
   const dir = mode === 'advance' ? toward : -toward;

@@ -11,13 +11,19 @@ export type Side = 'pc' | 'monster';
 /** A condition that can be attached to a combatant during combat. */
 export type ConditionKind =
   | 'prone'
+  | 'grappled'
   | 'poisoned'
   | 'asleep' // unconscious from sleep; incapacitated, attacks against have advantage
+  | 'incapacitated'
   | 'unconscious'
+  | 'invisible'
   | 'blinded'
+  | 'charmed'
+  | 'deafened'
   | 'restrained'
   | 'stunned'
   | 'paralyzed'
+  | 'petrified'
   | 'frightened'
   | 'blessed' // +1d4 to attacks & saves
   | 'dodging' // attacks against have disadvantage
@@ -134,7 +140,7 @@ export interface DamageRider {
 
 /**
  * A reusable action. Stored in the action library and referenced by id from
- * combatant scripts. Movement and "move" are abstract for now.
+ * combatant scripts. Movement and "move" use the simulator's 1D linear battlefield.
  */
 export interface Action {
   id: string;
