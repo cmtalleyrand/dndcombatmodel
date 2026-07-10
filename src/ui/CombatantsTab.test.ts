@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SAMPLE_MONSTERS } from '../data/srd';
-import { cloneStoredCombatant, validateCombatant } from './CombatantsTab';
+import { defaultScenario, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS } from '../data/srd';
+import { cloneStoredCombatant, addCombatantWithDefaultActions, validateCombatant } from './CombatantsTab';
 
 describe('stored combatant templates', () => {
   it('clones a stored monster with a fresh id and ready-to-run actions and rules', () => {
@@ -24,6 +24,25 @@ describe('stored combatant templates', () => {
 
     expect(template.actionIds).not.toContain('act-extra');
     expect(template.script[0].target.strategy).toBe('nearestEnemy');
+  });
+
+  it('adds missing default actions and weapons when a preset combatant is inserted', () => {
+    const template = SAMPLE_MONSTERS[0];
+    const scenario = { ...defaultScenario(), combatants: [], actions: [], weapons: [] };
+
+    const next = addCombatantWithDefaultActions(scenario, cloneStoredCombatant(template, []));
+
+    expect(next.actions.map((action) => action.id)).toEqual(template.actionIds);
+    expect(next.weapons.map((weapon) => weapon.id)).toContain('wpn-scimitar');
+    expect(validateCombatant(next.combatants[0], next)).toEqual([]);
+  });
+
+  it('level 3 PC presets use subclass-first names with level suffixes', () => {
+    expect(LEVEL_3_CLASS_PCS.map((pc) => pc.name)).toContain('Battlemaster Fighter (Sword and Board) Lvl 3');
+    for (const pc of LEVEL_3_CLASS_PCS) {
+      expect(pc.name).toMatch(/ Lvl 3$/);
+      expect(pc.name.startsWith('Level 3 ')).toBe(false);
+    }
   });
 
   it('stored monsters pass the combatant readiness checks', () => {

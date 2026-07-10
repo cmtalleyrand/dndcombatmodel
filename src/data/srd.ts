@@ -897,6 +897,8 @@ export const SAMPLE_PCS: Combatant[] = [
 type LibraryPcSpec = {
   className: string;
   level: number;
+  subclass?: string;
+  additionalInfo?: string;
   actionIds: string[];
   primaryActionId: string;
   maxHp: number;
@@ -909,8 +911,8 @@ type LibraryPcSpec = {
 
 function makeLibraryPc(spec: LibraryPcSpec): Combatant {
   return {
-    id: `pc-l${spec.level}-${spec.className.toLowerCase()}`,
-    name: `Level ${spec.level} ${spec.className}`,
+    id: `pc-l${spec.level}-${[spec.subclass, spec.className, spec.additionalInfo].filter(Boolean).join('-').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    name: `${spec.subclass ? `${spec.subclass} ` : ''}${spec.className}${spec.additionalInfo ? ` (${spec.additionalInfo})` : ''} Lvl ${spec.level}`,
     side: 'pc',
     maxHp: spec.maxHp,
     ac: spec.ac,
@@ -950,17 +952,18 @@ export const LEVEL_1_CLASS_PCS: Combatant[] = [
 ];
 
 export const LEVEL_3_CLASS_PCS: Combatant[] = [
-  ...SAMPLE_PCS,
-  makeLibraryPc({ className: 'Barbarian', level: 3, maxHp: 35, ac: 14, abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-rage', 'act-greataxe-rage'], primaryActionId: 'act-greataxe-rage' }),
-  makeLibraryPc({ className: 'Bard', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 8, dex: 14, con: 14, int: 12, wis: 10, cha: 16 }, saveProficiencies: ['dex', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-dagger', 'act-thunderwave', 'act-shatter'], primaryActionId: 'act-shatter' }),
-  makeLibraryPc({ className: 'Cleric', level: 3, maxHp: 24, ac: 18, abilityScores: { str: 14, dex: 10, con: 14, int: 10, wis: 16, cha: 12 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-mace', 'act-sacred-flame', 'act-cure-wounds', 'act-guiding-bolt'], primaryActionId: 'act-guiding-bolt' }),
-  makeLibraryPc({ className: 'Druid', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 8 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-quarterstaff', 'act-moonbeam', 'act-cure-wounds'], primaryActionId: 'act-moonbeam' }),
-  makeLibraryPc({ className: 'Fighter', level: 3, maxHp: 31, ac: 18, abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-longsword-2x', 'act-heavy-crossbow'], primaryActionId: 'act-longsword-2x' }),
-  makeLibraryPc({ className: 'Monk', level: 3, maxHp: 24, ac: 15, abilityScores: { str: 12, dex: 16, con: 14, int: 10, wis: 14, cha: 8 }, saveProficiencies: ['str', 'dex'], actionIds: ['act-quarterstaff', 'act-dart'], primaryActionId: 'act-quarterstaff' }),
-  makeLibraryPc({ className: 'Paladin', level: 3, maxHp: 28, ac: 18, abilityScores: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 14 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 3 }, actionIds: ['act-longsword', 'act-javelin'], primaryActionId: 'act-longsword' }),
-  makeLibraryPc({ className: 'Sorcerer', level: 3, maxHp: 20, ac: 12, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['con', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-scorching-ray', 'act-shatter'], primaryActionId: 'act-scorching-ray' }),
-  makeLibraryPc({ className: 'Warlock', level: 3, maxHp: 24, ac: 13, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 2: 2 }, actionIds: ['act-fire-bolt', 'act-hellish-rebuke', 'act-shatter'], primaryActionId: 'act-shatter' }),
-  makeLibraryPc({ className: 'Wizard', level: 3, maxHp: 18, ac: 12, abilityScores: { str: 8, dex: 14, con: 13, int: 16, wis: 11, cha: 10 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'int', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-magic-missile', 'act-scorching-ray'], primaryActionId: 'act-scorching-ray' }),
+  makeLibraryPc({ className: 'Barbarian', subclass: 'Berserker', level: 3, maxHp: 35, ac: 14, abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-rage', 'act-greataxe-rage'], primaryActionId: 'act-greataxe-rage' }),
+  makeLibraryPc({ className: 'Bard', subclass: 'College of Lore', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 8, dex: 14, con: 14, int: 12, wis: 10, cha: 16 }, saveProficiencies: ['dex', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-dagger', 'act-thunderwave', 'act-shatter'], primaryActionId: 'act-shatter' }),
+  makeLibraryPc({ className: 'Cleric', subclass: 'Life Domain', level: 3, maxHp: 24, ac: 18, abilityScores: { str: 14, dex: 10, con: 14, int: 10, wis: 16, cha: 12 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-mace', 'act-sacred-flame', 'act-cure-wounds', 'act-guiding-bolt'], primaryActionId: 'act-guiding-bolt' }),
+  makeLibraryPc({ className: 'Druid', subclass: 'Circle of the Moon', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 8 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-quarterstaff', 'act-moonbeam', 'act-cure-wounds'], primaryActionId: 'act-moonbeam' }),
+  makeLibraryPc({ className: 'Fighter', subclass: 'Battlemaster', additionalInfo: 'Sword and Board', level: 3, maxHp: 31, ac: 18, abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-longsword', 'act-heavy-crossbow'], primaryActionId: 'act-longsword' }),
+  makeLibraryPc({ className: 'Monk', subclass: 'Way of the Open Hand', level: 3, maxHp: 24, ac: 15, abilityScores: { str: 12, dex: 16, con: 14, int: 10, wis: 14, cha: 8 }, saveProficiencies: ['str', 'dex'], actionIds: ['act-quarterstaff', 'act-dart'], primaryActionId: 'act-quarterstaff' }),
+  makeLibraryPc({ className: 'Paladin', subclass: 'Oath of Devotion', level: 3, maxHp: 28, ac: 18, abilityScores: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 14 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 3 }, actionIds: ['act-longsword', 'act-javelin'], primaryActionId: 'act-longsword' }),
+  makeLibraryPc({ className: 'Ranger', subclass: 'Hunter', additionalInfo: 'Archer', level: 3, maxHp: 28, ac: 15, abilityScores: { str: 11, dex: 16, con: 14, int: 10, wis: 14, cha: 10 }, saveProficiencies: ['str', 'dex'], spellcastingAbility: 'wis', spellSlots: { 1: 3 }, actionIds: ['act-hunters-mark', 'act-longbow-hunters-mark'], primaryActionId: 'act-longbow-hunters-mark' }),
+  makeLibraryPc({ className: 'Rogue', subclass: 'Thief', additionalInfo: 'Archer', level: 3, maxHp: 22, ac: 15, abilityScores: { str: 10, dex: 16, con: 12, int: 12, wis: 13, cha: 14 }, saveProficiencies: ['dex', 'int'], actionIds: ['act-rogue-shortbow'], primaryActionId: 'act-rogue-shortbow' }),
+  makeLibraryPc({ className: 'Sorcerer', subclass: 'Draconic Bloodline', level: 3, maxHp: 20, ac: 12, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['con', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-scorching-ray', 'act-shatter'], primaryActionId: 'act-scorching-ray' }),
+  makeLibraryPc({ className: 'Warlock', subclass: 'Fiend Patron', level: 3, maxHp: 24, ac: 13, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 2: 2 }, actionIds: ['act-fire-bolt', 'act-hellish-rebuke', 'act-shatter'], primaryActionId: 'act-shatter' }),
+  makeLibraryPc({ className: 'Wizard', subclass: 'Evocation', level: 3, maxHp: 18, ac: 12, abilityScores: { str: 8, dex: 14, con: 13, int: 16, wis: 11, cha: 10 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'int', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-magic-missile', 'act-scorching-ray'], primaryActionId: 'act-scorching-ray' }),
 ];
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { ABILITIES, type Ability, type Combatant, type Scenario, type Side, type Skill } from '../engine/types';
-import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS } from '../data/srd';
+import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS, SRD_ACTIONS } from '../data/srd';
 import { copyScript, genId, removeCombatant, upsertCombatant } from '../state/store';
+import { SRD_WEAPONS } from '../data/weapons';
 import { defaultPosition } from '../engine/state';
 import { RuleBuilder } from './RuleBuilder';
 import { describeAction } from './describe';
@@ -42,6 +43,32 @@ function blankCombatant(side: Side): Combatant {
 }
 
 const PC_LIBRARY = [...LEVEL_1_CLASS_PCS, ...LEVEL_3_CLASS_PCS];
+
+export function addCombatantWithDefaultActions(scenario: Scenario, combatant: Combatant): Scenario {
+  const existingActionIds = new Set(scenario.actions.map((action) => action.id));
+  const neededActionIds = new Set([
+    ...combatant.actionIds,
+    ...combatant.script.map((rule) => rule.actionId),
+  ]);
+  const actions = [
+    ...scenario.actions,
+    ...SRD_ACTIONS.filter((action) => neededActionIds.has(action.id) && !existingActionIds.has(action.id)),
+  ];
+
+  const existingWeaponIds = new Set(scenario.weapons.map((weapon) => weapon.id));
+  const neededWeaponIds = new Set(
+    actions
+      .filter((action) => neededActionIds.has(action.id) && action.kind === 'attack' && action.weaponId)
+      .map((action) => action.weaponId!),
+  );
+  const weapons = [
+    ...scenario.weapons,
+    ...SRD_WEAPONS.filter((weapon) => neededWeaponIds.has(weapon.id) && !existingWeaponIds.has(weapon.id)),
+  ];
+
+  return upsertCombatant({ ...scenario, actions, weapons }, combatant);
+}
+
 const SKILLS: { id: Skill; label: string }[] = [
   { id: 'athletics', label: 'Athletics' },
   { id: 'acrobatics', label: 'Acrobatics' },
@@ -93,7 +120,7 @@ export function CombatantsTab({ side, scenario, setScenario }: Props) {
   const add = () => {
     const template = templates.find((c) => c.id === templateId);
     const c = template ? cloneStoredCombatant(template, scenario.combatants) : blankCombatant(side);
-    setScenario(upsertCombatant(scenario, c));
+    setScenario(template ? addCombatantWithDefaultActions(scenario, c) : upsertCombatant(scenario, c));
     setOpenId(c.id);
   };
 
