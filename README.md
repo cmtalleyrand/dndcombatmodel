@@ -68,9 +68,7 @@ deployed as a static site to GitHub Pages.
 
 ## Scope
 
-**Permanently out of scope:** 2D positioning and area geometry. Space is modelled as
-a single linear (1D) battlefield axis — this is a deliberate simplification, not a
-placeholder for something more detailed later.
+**2D positioning deferred:** Space is modelled as linear 1D space as a deliberate simplification.
 
 **Not modeled yet, but on the roadmap:** reactions (opportunity attacks, Shield,
 Counterspell), legendary actions, a full resistance/immunity matrix beyond physical
