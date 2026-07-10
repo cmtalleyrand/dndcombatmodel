@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { defaultScenario, SRD_ACTIONS, SAMPLE_PCS } from '../srd';
+import { describe, expect, it } from 'vitest';
+import { defaultScenario, SAMPLE_PCS, SRD_ACTIONS } from '../srd';
 import { SRD_WEAPONS } from '../weapons';
 import { runMany } from '../../engine/statistics';
 
@@ -17,14 +17,10 @@ describe('default scenario', () => {
     const s = defaultScenario();
     const { stats } = runMany(s, 300, 2025);
     expect(stats.simulations).toBe(300);
-    // probabilities sum to 1
     expect(stats.pcWinRate + stats.monsterWinRate + stats.drawRate).toBeCloseTo(1, 5);
-    // combat resolves within the round cap on average
     expect(stats.avgRounds).toBeGreaterThan(0);
     expect(stats.avgRounds).toBeLessThan(s.maxRounds);
-    // the party should win the majority of the time against this encounter
     expect(stats.pcWinRate).toBeGreaterThan(0.5);
-    // cleric should be doing some healing
     const cleric = stats.combatants.find((c) => c.id === 'pc-cleric')!;
     expect(cleric.avgHealingDone).toBeGreaterThan(0);
   });
@@ -63,5 +59,30 @@ describe('default scenario', () => {
     }
     expect(SRD_ACTIONS.filter((a) => ['spell', 'ability'].includes(a.kind)).length).toBeGreaterThanOrEqual(25);
     expect(SAMPLE_PCS.length).toBe(4);
+  });
+
+  it('keeps action ids unique as the reusable library grows', () => {
+    const ids = SRD_ACTIONS.map((action) => action.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('includes enriched spell options spanning attacks, saves, concentration, and areas', () => {
+    const actionsById = new Map(SRD_ACTIONS.map((action) => [action.id, action]));
+
+    expect(actionsById.get('act-scorching-ray')).toMatchObject({
+      spellAttack: true,
+      damage: '6d6',
+      spellLevel: 2,
+    });
+    expect(actionsById.get('act-call-lightning')).toMatchObject({
+      concentration: true,
+      aoeRadius: 5,
+      save: { ability: 'dex', onSuccess: 'half' },
+    });
+    expect(actionsById.get('act-ice-storm')).toMatchObject({
+      aoeRadius: 20,
+      damage: '2d8+4d6',
+      spellLevel: 4,
+    });
   });
 });
