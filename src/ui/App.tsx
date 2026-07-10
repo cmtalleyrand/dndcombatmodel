@@ -66,18 +66,18 @@ export function App() {
             onClick={() => setTab(t.id)}
           >
             {t.label}
-            {t.id === 'pcs' && ` (${pcs.length}/4)`}
-            {t.id === 'monsters' && ` (${monsters.length}/8)`}
+            {t.id === 'pcs' && ` (${pcs.length})`}
+            {t.id === 'monsters' && ` (${monsters.length})`}
             {t.id === 'replay' && stats && <span className="tab-dot" aria-label="replay ready" />}
           </button>
         ))}
       </div>
 
       {tab === 'pcs' && (
-        <CombatantsTab side="pc" max={4} scenario={scenario} setScenario={setScenario} />
+        <CombatantsTab side="pc" scenario={scenario} setScenario={setScenario} />
       )}
       {tab === 'monsters' && (
-        <CombatantsTab side="monster" max={8} scenario={scenario} setScenario={setScenario} />
+        <CombatantsTab side="monster" scenario={scenario} setScenario={setScenario} />
       )}
       {tab === 'actions' && <ActionLibraryTab scenario={scenario} setScenario={setScenario} />}
       {tab === 'initiative' && <InitiativeTab scenario={scenario} setScenario={setScenario} />}

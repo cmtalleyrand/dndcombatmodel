@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ABILITIES, type Ability, type Combatant, type Scenario, type Side } from '../engine/types';
+import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS } from '../data/srd';
 import { copyScript, genId, removeCombatant, upsertCombatant } from '../state/store';
 import { RuleBuilder } from './RuleBuilder';
 import { describeAction } from './describe';
@@ -8,12 +9,12 @@ import { HeartIcon, ShieldHalfIcon, TrashIcon, pickCombatantIcon } from './icons
 
 interface Props {
   side: Side;
-  max: number;
   scenario: Scenario;
   setScenario: (s: Scenario) => void;
 }
 
 function blankCombatant(side: Side): Combatant {
+  const actionId = side === 'pc' ? 'act-longsword' : 'act-scimitar';
   return {
     id: genId(side),
     name: side === 'pc' ? 'New PC' : 'New Monster',
@@ -23,19 +24,54 @@ function blankCombatant(side: Side): Combatant {
     abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
     saveProficiencies: [],
     proficiencyBonus: 2,
-    actionIds: [],
-    script: [],
+    position: side === 'pc' ? 45 : 0,
+    speed: 30,
+    actionIds: [actionId],
+    script: [
+      {
+        priority: 1,
+        label: `Attack the nearest ${side === 'pc' ? 'monster' : 'PC'}`,
+        condition: { type: 'always' },
+        actionId,
+        target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
+      },
+    ],
     spellSlots: {},
   };
 }
 
-export function CombatantsTab({ side, max, scenario, setScenario }: Props) {
+const PC_LIBRARY = [...LEVEL_1_CLASS_PCS, ...LEVEL_3_CLASS_PCS];
+
+function templatesForSide(side: Side): Combatant[] {
+  return side === 'pc' ? PC_LIBRARY : SAMPLE_MONSTERS;
+}
+
+export function cloneStoredCombatant(template: Combatant, existing: Combatant[]): Combatant {
+  const sameBase = existing.filter(
+    (c) => c.name === template.name || c.name.startsWith(`${template.name} `),
+  );
+  const suffix = sameBase.length + 1;
+  return {
+    ...template,
+    id: genId(template.side),
+    name: sameBase.length === 0 ? template.name : `${template.name} ${suffix}`,
+    actionIds: [...template.actionIds],
+    saveProficiencies: [...template.saveProficiencies],
+    abilityScores: { ...template.abilityScores },
+    spellSlots: { ...template.spellSlots },
+    script: template.script.map((rule) => ({ ...rule, target: { ...rule.target } })),
+  };
+}
+
+export function CombatantsTab({ side, scenario, setScenario }: Props) {
   const combatants = scenario.combatants.filter((c) => c.side === side);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState('blank');
+  const templates = templatesForSide(side);
 
   const add = () => {
-    if (combatants.length >= max) return;
-    const c = blankCombatant(side);
+    const template = templates.find((c) => c.id === templateId);
+    const c = template ? cloneStoredCombatant(template, scenario.combatants) : blankCombatant(side);
     setScenario(upsertCombatant(scenario, c));
     setOpenId(c.id);
   };
@@ -53,9 +89,21 @@ export function CombatantsTab({ side, max, scenario, setScenario }: Props) {
               else applies.
             </InfoHint>
           </h2>
-          <button onClick={add} disabled={combatants.length >= max}>
-            + Add {side === 'pc' ? 'PC' : 'Monster'} ({combatants.length}/{max})
-          </button>
+          <div className="toolbar">
+            <select
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+              aria-label={`Stored ${side === 'pc' ? 'PC' : 'monster'} to add`}
+            >
+              <option value="blank">Blank {side === 'pc' ? 'PC' : 'monster'}</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>{template.name}</option>
+              ))}
+            </select>
+            <button onClick={add}>
+              + Add {side === 'pc' ? 'PC' : 'Monster'} ({combatants.length})
+            </button>
+          </div>
         </div>
       </div>
 
