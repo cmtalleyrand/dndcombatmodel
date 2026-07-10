@@ -16,12 +16,12 @@ import {
   attackAdvantage,
   distance,
   isAlive,
-  saveBonus,
+  resolveSave,
   targetAdvantage,
   type CombatantState,
   type CombatState,
 } from './state';
-import type { Action, ConditionApplication, DamageType } from './types';
+import type { Action, AoeTargets, ConditionApplication, DamageType } from './types';
 
 const BLESS_BONUS = '1d4';
 
@@ -312,6 +312,37 @@ function applyRiders(
   return total;
 }
 
+/** Resolve an action's extra typed-damage packets against one target (each vs its own resistances). */
+function applyExtraDamage(
+  state: CombatState,
+  rng: RNG,
+  actor: CombatantState,
+  target: CombatantState,
+  action: Action,
+  crit: boolean,
+  events: LogEvent[],
+): void {
+  if (!action.extraDamage?.length) return;
+  for (const extra of action.extraDamage) {
+    if (!isAlive(target)) break;
+    let dmg = extra.flat ?? 0;
+    if (extra.dice) dmg += rollDice(rng, crit ? critDouble(extra.dice) : extra.dice).total;
+    if (dmg <= 0) continue;
+    applyDamage(state, rng, actor, target, dmg, events, extra.type);
+    events.push({
+      round: state.round,
+      actorId: actor.base.id,
+      actorName: actor.base.name,
+      type: 'attack',
+      actionId: action.id,
+      targetId: target.base.id,
+      targetName: target.base.name,
+      damage: dmg,
+      message: `  ↳ ${extra.label ?? extra.type}: +${dmg} ${extra.type} damage.`,
+    });
+  }
+}
+
 function isMeleeAutoCrit(target: CombatantState, gap: number): boolean {
   return (
     gap <= 5 &&
@@ -400,6 +431,7 @@ function resolveAttack(
       const riderBonus = applyRiders(state, rng, actor, target, action, adv, gap, roll.isCrit, events);
       dmg += riderBonus;
       applyDamage(state, rng, actor, target, dmg, events, profile.damageType);
+      applyExtraDamage(state, rng, actor, target, action, roll.isCrit, events);
       events.push({
         round: state.round,
         actorId: actor.base.id,
@@ -433,15 +465,18 @@ function resolveSpellOrAbility(
   // Move toward the primary target for touch/short-range spells.
   if (targets[0] && targets[0] !== actor) approach(state, actor, targets[0], spellRange, events);
 
-  // Area of effect: hit everyone on the primary target's side within the radius.
+  // Area of effect: everyone within the radius of the center point. Damage/save spells
+  // catch both sides (friendly fire) by default; heals default to allies only.
   if (action.aoeRadius && targets[0]) {
     const center = targets[0];
-    targets = state.combatants.filter(
-      (c) =>
-        isAlive(c) &&
-        c.base.side === center.base.side &&
-        Math.abs(c.position - center.position) <= action.aoeRadius!,
-    );
+    const mode: AoeTargets = action.aoeTargets ?? (action.heal ? 'allies' : 'all');
+    targets = state.combatants.filter((c) => {
+      if (!isAlive(c)) return false;
+      if (Math.abs(c.position - center.position) > action.aoeRadius!) return false;
+      if (mode === 'allies') return c.base.side === actor.base.side;
+      if (mode === 'enemies') return c.base.side !== actor.base.side;
+      return true;
+    });
   }
 
   // Drop targets still out of range after moving (finite-range spells only).
@@ -499,24 +534,9 @@ function resolveSpellOrAbility(
 
     if (action.save) {
       // Saving-throw effect with a derived DC.
-      const meta = CONDITION_CATALOG;
       const ability = action.save.ability;
       const dc = spellSaveDC(actor.base, action);
-      const autoFail = target.conditions.some((c) =>
-        meta[c.kind].autoFailSaves?.includes(ability),
-      );
-      let saveTotal = 0;
-      let saved = false;
-      if (autoFail) {
-        saved = false;
-      } else {
-        let sb = saveBonus(target.base, ability);
-        if (bless) sb += rollDice(rng, BLESS_BONUS).total;
-        const adv = saveAdvantage(target, ability);
-        const roll = rollD20(rng, sb, adv);
-        saveTotal = roll.total;
-        saved = roll.total >= dc;
-      }
+      const { saved, autoFail, total: saveTotal } = resolveSave(rng, target, ability, dc);
 
       let dmg = 0;
       if (action.damage) {
@@ -524,6 +544,7 @@ function resolveSpellOrAbility(
         if (saved) dmg = action.save.onSuccess === 'half' ? Math.floor(dmg / 2) : 0;
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
+      if (!saved) applyExtraDamage(state, rng, actor, target, action, false, events);
       if (!saved && action.applyConditions?.length) {
         applyConditionsTo(target, actor, action.applyConditions, state, events);
       }
@@ -556,6 +577,7 @@ function resolveSpellOrAbility(
           isMeleeAutoCrit(target, distance(actor, target)) || roll.isCrit,
         );
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
+        applyExtraDamage(state, rng, actor, target, action, roll.isCrit, events);
         if (action.applyConditions?.length) {
           applyConditionsTo(target, actor, action.applyConditions, state, events);
         }
@@ -580,6 +602,7 @@ function resolveSpellOrAbility(
         dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, false);
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
+      applyExtraDamage(state, rng, actor, target, action, false, events);
       if (action.applyConditions?.length) {
         applyConditionsTo(target, actor, action.applyConditions, state, events);
       }
@@ -600,16 +623,5 @@ function resolveSpellOrAbility(
   }
 }
 
-function saveAdvantage(target: CombatantState, ability: import('./types').Ability): Advantage {
-  // 'dodging' grants advantage on Dex saves; restrained gives disadvantage on Dex saves.
-  let adv: Advantage = 'normal';
-  if (ability === 'dex') {
-    if (target.conditions.some((c) => c.kind === 'dodging')) adv = combineAdvantage(adv, 'advantage');
-    if (target.conditions.some((c) => c.kind === 'restrained'))
-      adv = combineAdvantage(adv, 'disadvantage');
-  }
-  return adv;
-}
-
 // re-export for tests
-export { abilityMod };
+export { abilityMod, critDouble, rollDamageTotal };

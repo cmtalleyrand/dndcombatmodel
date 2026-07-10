@@ -94,4 +94,38 @@ describe('AoE in linear space', () => {
     expect(state.combatants[2].hp).toBeLessThan(30); // e2 hit
     expect(state.combatants[3].hp).toBe(30); // e3 out of radius
   });
+
+  it('a damage AoE catches allies within the radius (friendly fire)', () => {
+    const caster = mk('wiz', 'pc', { position: 200, spellSlots: { 1: 5 } }); // far from blast
+    const ally = mk('ally', 'pc', { position: 30 });
+    const enemy = mk('enemy', 'monster', { position: 30 });
+    const fireball: Action = {
+      id: 'a-fb', name: 'Fireball', kind: 'spell', targets: 1, spellLevel: 1,
+      range: 300, aoeRadius: 20, damage: '8d6', damageType: 'fire',
+      save: { ability: 'dex', dc: 50, onSuccess: 'half' },
+    };
+    const state = build([caster, ally, enemy], [fireball]);
+    const events: LogEvent[] = [];
+    // center on the enemy at 30; the ally shares that position and must also be hit
+    performAction(state, new RNG(2), state.combatants[0], fireball, [state.combatants[2]], events);
+    expect(state.combatants[1].hp).toBeLessThan(30); // ally caught in the blast
+    expect(state.combatants[2].hp).toBeLessThan(30); // enemy hit
+  });
+
+  it('a heal AoE only affects allies, never enemies', () => {
+    const cleric = mk('cle', 'pc', { position: 30, maxHp: 40, spellSlots: { 1: 5 } });
+    const ally = mk('ally', 'pc', { position: 30, maxHp: 40 });
+    const enemy = mk('enemy', 'monster', { position: 30, maxHp: 40 });
+    const massHeal: Action = {
+      id: 'a-mh', name: 'Mass Heal', kind: 'spell', targets: 1, spellLevel: 1,
+      range: 60, aoeRadius: 20, heal: '2d8',
+    };
+    const state = build([cleric, ally, enemy], [massHeal]);
+    // wound everyone so healing is visible
+    state.combatants.forEach((c) => { c.hp = 10; });
+    const events: LogEvent[] = [];
+    performAction(state, new RNG(2), state.combatants[0], massHeal, [state.combatants[1]], events);
+    expect(state.combatants[1].hp).toBeGreaterThan(10); // ally healed
+    expect(state.combatants[2].hp).toBe(10); // enemy not healed
+  });
 });

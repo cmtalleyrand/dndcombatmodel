@@ -62,6 +62,12 @@ export function parseDice(formula: string): ParsedDice {
   return { count, sides, modifier };
 }
 
+/** Whether a string is a dice formula `parseDice` can accept (e.g. "2d6+3", "1d8", "5"). */
+export function isValidDiceFormula(formula: string): boolean {
+  const cleaned = formula.replace(/\s+/g, '').toLowerCase();
+  return /^[+-]?\d+$/.test(cleaned) || /^(\d*)d(\d+)([+-]\d+)?$/.test(cleaned);
+}
+
 /** Roll a dice formula. Returns the total and the individual die rolls. */
 export function rollDice(rng: RNG, formula: string): { total: number; rolls: number[] } {
   const { count, sides, modifier } = parseDice(formula);
