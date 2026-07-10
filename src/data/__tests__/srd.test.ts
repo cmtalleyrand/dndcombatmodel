@@ -90,7 +90,7 @@ describe('default scenario', () => {
 
 
 
-  it('prestocks every class at level 1, at least eight level-3 PCs, and at least 24 monsters', () => {
+  it('prestocks every class at level 1, at least sixteen level-3 PCs, and at least 32 monsters', () => {
     const allActions = new Set(SRD_ACTIONS.map((action) => action.id));
     const expectedClasses = new Set([
       'Barbarian',
@@ -109,8 +109,8 @@ describe('default scenario', () => {
     const level1Classes = new Set(LEVEL_1_CLASS_PCS.map((pc) => pc.name.replace('Level 1 ', '')));
 
     expect(level1Classes).toEqual(expectedClasses);
-    expect(LEVEL_3_CLASS_PCS.length).toBeGreaterThanOrEqual(8);
-    expect(SAMPLE_MONSTERS.length).toBeGreaterThanOrEqual(24);
+    expect(LEVEL_3_CLASS_PCS.length).toBeGreaterThanOrEqual(16);
+    expect(SAMPLE_MONSTERS.length).toBeGreaterThanOrEqual(32);
 
     for (const combatant of [...LEVEL_1_CLASS_PCS, ...LEVEL_3_CLASS_PCS, ...SAMPLE_MONSTERS]) {
       expect(combatant.script.length).toBeGreaterThan(0);
