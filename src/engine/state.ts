@@ -162,11 +162,20 @@ export function attackAdvantage(attacker: CombatantState): Advantage {
 }
 
 /** Advantage state contributed by the target's conditions (attacks AGAINST target). */
-export function targetAdvantage(target: CombatantState): Advantage {
+export function targetAdvantage(target: CombatantState, attacker?: CombatantState): Advantage {
   let adv: Advantage = 'normal';
+  const gap = attacker ? distance(attacker, target) : undefined;
   for (const cond of target.conditions) {
     const meta = CONDITION_CATALOG[cond.kind];
     if (meta.attackAgainstAdvantage) adv = combineAdvantage(adv, meta.attackAgainstAdvantage);
+    if (gap !== undefined) {
+      if (gap <= 5 && meta.meleeAttackAgainstAdvantage) {
+        adv = combineAdvantage(adv, meta.meleeAttackAgainstAdvantage);
+      }
+      if (gap > 5 && meta.rangedAttackAgainstAdvantage) {
+        adv = combineAdvantage(adv, meta.rangedAttackAgainstAdvantage);
+      }
+    }
   }
   return adv;
 }

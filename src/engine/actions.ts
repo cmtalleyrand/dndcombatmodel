@@ -42,6 +42,11 @@ function applyDamage(
     amount = Math.floor(amount / 2);
     if (amount <= 0) return;
   }
+  // Petrified creatures have resistance to all damage.
+  if (target.conditions.some((c) => CONDITION_CATALOG[c.kind].resistAll)) {
+    amount = Math.floor(amount / 2);
+    if (amount <= 0) return;
+  }
   target.hp -= amount;
   target.damageTaken += amount;
   source.damageDealt += amount;
@@ -307,6 +312,15 @@ function applyRiders(
   return total;
 }
 
+function isMeleeAutoCrit(target: CombatantState, gap: number): boolean {
+  return (
+    gap <= 5 &&
+    target.conditions.some(
+      (c) => c.kind === 'unconscious' || c.kind === 'asleep' || c.kind === 'paralyzed',
+    )
+  );
+}
+
 function resolveAttack(
   state: CombatState,
   rng: RNG,
@@ -349,7 +363,7 @@ function resolveAttack(
     for (let i = 0; i < attackCount; i++) {
       if (!isAlive(target)) break;
       const adv = combineAdvantage(
-        combineAdvantage(attackAdvantage(actor), targetAdvantage(target)),
+        combineAdvantage(attackAdvantage(actor), targetAdvantage(target, actor)),
         rangeAdv,
       );
       let toHit = profile.toHit;
@@ -376,7 +390,12 @@ function resolveAttack(
         continue;
       }
 
-      let dmg = rollDamageTotal(rng, profile.damageDice, profile.damageFlat, roll.isCrit);
+      let dmg = rollDamageTotal(
+        rng,
+        profile.damageDice,
+        profile.damageFlat,
+        isMeleeAutoCrit(target, gap) || roll.isCrit,
+      );
       // Conditional feature riders (Sneak Attack, Rage, Hunter's Mark…).
       const riderBonus = applyRiders(state, rng, actor, target, action, adv, gap, roll.isCrit, events);
       dmg += riderBonus;
@@ -523,14 +542,19 @@ function resolveSpellOrAbility(
       });
     } else if (usesSpellAttack) {
       // Spell attack roll with a derived attack bonus.
-      const adv = combineAdvantage(attackAdvantage(actor), targetAdvantage(target));
+      const adv = combineAdvantage(attackAdvantage(actor), targetAdvantage(target, actor));
       let toHit = action.attackBonus ?? spellAttackBonus(actor.base, action);
       if (bless) toHit += rollDice(rng, BLESS_BONUS).total;
       const roll = rollD20(rng, toHit, adv);
       const hit = roll.isCrit || (!roll.isCritMiss && roll.total >= target.base.ac);
       let dmg = 0;
       if (hit) {
-        dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, roll.isCrit);
+        dmg = rollDamageTotal(
+          rng,
+          dmgProfile.damageDice,
+          dmgProfile.damageFlat,
+          isMeleeAutoCrit(target, distance(actor, target)) || roll.isCrit,
+        );
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
         if (action.applyConditions?.length) {
           applyConditionsTo(target, actor, action.applyConditions, state, events);

@@ -12,6 +12,10 @@ export interface ConditionMeta {
   attackByAdvantage?: Advantage;
   /** attacks made AGAINST this combatant get this advantage state. */
   attackAgainstAdvantage?: Advantage;
+  /** attacks made AGAINST this combatant get this advantage state only from 5ft away. */
+  meleeAttackAgainstAdvantage?: Advantage;
+  /** attacks made AGAINST this combatant get this advantage state only from beyond 5ft. */
+  rangedAttackAgainstAdvantage?: Advantage;
   /** automatically fails saving throws of these abilities. */
   autoFailSaves?: Ability[];
   /** sets movement speed to 0 while present. */
@@ -20,6 +24,8 @@ export interface ConditionMeta {
   endsWhenSourceCannotAct?: boolean;
   /** halves bludgeoning/piercing/slashing damage taken (Rage). */
   resistPhysical?: boolean;
+  /** halves all damage taken after other damage calculation (Petrified). */
+  resistAll?: boolean;
   description: string;
 }
 
@@ -29,9 +35,9 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
     label: 'Prone',
     incapacitated: false,
     attackByAdvantage: 'disadvantage',
-    // melee attackers have advantage; abstracting to "against has advantage"
-    attackAgainstAdvantage: 'advantage',
-    description: 'Disadvantage on attacks; attacks against (melee) have advantage.',
+    meleeAttackAgainstAdvantage: 'advantage',
+    rangedAttackAgainstAdvantage: 'disadvantage',
+    description: 'Disadvantage on attacks; attacks from within 5ft have advantage, otherwise disadvantage.',
   },
   grappled: {
     kind: 'grappled',
@@ -130,7 +136,8 @@ export const CONDITION_CATALOG: Record<ConditionKind, ConditionMeta> = {
     incapacitated: true,
     attackAgainstAdvantage: 'advantage',
     autoFailSaves: ['str', 'dex'],
-    description: 'Incapacitated; auto-fail Str/Dex saves; attacks against have advantage.',
+    resistAll: true,
+    description: 'Incapacitated; auto-fail Str/Dex saves; attacks against have advantage; resists all damage.',
   },
   frightened: {
     kind: 'frightened',
