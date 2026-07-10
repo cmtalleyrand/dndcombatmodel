@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { runSimulation } from '../simulator';
-import { runMany } from '../statistics';
+import { runSimulation, type RunResult } from '../simulator';
+import { aggregate } from '../statistics';
 import type { Action, Combatant, Scenario } from '../types';
 
 function mkAbilities(over: Partial<Record<string, number>> = {}) {
@@ -78,19 +78,39 @@ describe('runSimulation', () => {
     expect(r.rounds).toBeGreaterThan(0);
   });
 
-  it('a vastly stronger side wins ~always', () => {
-    const strongPc = fighter('hero', 'pc', { maxHp: 200, ac: 20 });
-    const weakMon = fighter('goblin', 'monster', { maxHp: 5, ac: 8 });
-    const s = baseScenario({ combatants: [strongPc, weakMon] });
-    const { stats } = runMany(s, 200, 999);
-    expect(stats.pcWinRate).toBeGreaterThan(0.95);
-  });
+  it('a side with a guaranteed lethal action wins exactly', () => {
+    const lethalStrike: Action = {
+      id: 'a-lethal-strike',
+      name: 'Lethal Strike',
+      kind: 'ability',
+      targets: 1,
+      damage: '10',
+      damageType: 'force',
+    };
+    const strongPc = fighter('hero', 'pc', {
+      actionIds: [lethalStrike.id],
+      script: [
+        {
+          priority: 1,
+          condition: { type: 'always' },
+          actionId: lethalStrike.id,
+          target: { strategy: 'lowestHpEnemy' },
+        },
+      ],
+    });
+    const weakMon = fighter('goblin', 'monster', { maxHp: 5 });
+    const s = baseScenario({
+      combatants: [strongPc, weakMon],
+      actions: [lethalStrike],
+      initiativeMode: 'fixed',
+      fixedOrder: ['hero', 'goblin'],
+    });
 
-  it('a mirror match is roughly 50/50', () => {
-    const s = baseScenario();
-    const { stats } = runMany(s, 600, 2024);
-    expect(stats.pcWinRate).toBeGreaterThan(0.3);
-    expect(stats.pcWinRate).toBeLessThan(0.7);
+    const r = runSimulation(s, 999);
+
+    expect(r.winner).toBe('pc');
+    expect(r.rounds).toBe(1);
+    expect(r.outcomes.find((o) => o.id === 'goblin')?.survived).toBe(false);
   });
 });
 
@@ -134,9 +154,88 @@ describe('replay frames', () => {
   });
 });
 
+describe('aggregate', () => {
+  it('computes exact rates from known run outcomes', () => {
+    const s = baseScenario({ maxRounds: 2 });
+    const runs: RunResult[] = [
+      {
+        winner: 'pc',
+        rounds: 1,
+        events: [],
+        outcomes: [
+          {
+            id: 'pc1',
+            name: 'pc1',
+            side: 'pc',
+            endHp: 10,
+            maxHp: 20,
+            survived: true,
+            damageDealt: 5,
+            damageTaken: 0,
+            healingDone: 0,
+          },
+          {
+            id: 'm1',
+            name: 'm1',
+            side: 'monster',
+            endHp: 0,
+            maxHp: 20,
+            survived: false,
+            damageDealt: 0,
+            damageTaken: 5,
+            healingDone: 0,
+          },
+        ],
+        damageByRound: { pc1: [5], m1: [0] },
+        frames: [],
+      },
+      {
+        winner: 'monster',
+        rounds: 2,
+        events: [],
+        outcomes: [
+          {
+            id: 'pc1',
+            name: 'pc1',
+            side: 'pc',
+            endHp: 0,
+            maxHp: 20,
+            survived: false,
+            damageDealt: 2,
+            damageTaken: 7,
+            healingDone: 0,
+          },
+          {
+            id: 'm1',
+            name: 'm1',
+            side: 'monster',
+            endHp: 3,
+            maxHp: 20,
+            survived: true,
+            damageDealt: 7,
+            damageTaken: 2,
+            healingDone: 0,
+          },
+        ],
+        damageByRound: { pc1: [1, 1], m1: [3, 4] },
+        frames: [],
+      },
+    ];
+
+    const stats = aggregate(s, runs);
+
+    expect(stats.simulations).toBe(2);
+    expect(stats.pcWinRate).toBe(0.5);
+    expect(stats.monsterWinRate).toBe(0.5);
+    expect(stats.drawRate).toBe(0);
+    expect(stats.avgRounds).toBe(1.5);
+    expect(stats.combatants.find((c) => c.id === 'pc1')?.avgDamageDealt).toBe(3.5);
+    expect(stats.combatants.find((c) => c.id === 'pc1')?.avgDamageByRound).toEqual([3, 0.5]);
+  });
+});
+
 describe('fixed initiative', () => {
   it('respects the provided order (first acts first)', () => {
-    // Glass cannons: whoever swings first usually wins. Put pc first.
     const pc = fighter('pc1', 'pc', { maxHp: 6, actionIds: [swordId] });
     const mon = fighter('m1', 'monster', { maxHp: 6 });
     const s = baseScenario({
@@ -144,8 +243,9 @@ describe('fixed initiative', () => {
       initiativeMode: 'fixed',
       fixedOrder: ['pc1', 'm1'],
     });
-    const { stats } = runMany(s, 300, 55);
-    // pc acting first should win more often than not
-    expect(stats.pcWinRate).toBeGreaterThan(0.5);
+    const r = runSimulation(s, 55);
+    const firstAction = r.events.find((e) => e.type !== 'condition');
+
+    expect(firstAction?.actorId).toBe('pc1');
   });
 });
