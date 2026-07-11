@@ -1,6 +1,6 @@
 # ⚔️ D&D 5e Combat Simulator
 
-A browser app that simulates Dungeons & Dragons 5e combat encounters and reports
+A browser app that simulates Dungeons & Dragons 2024 combat encounters and reports
 per-round actions, outcomes, and aggregate statistics across many Monte-Carlo runs.
 
 Configure a party (up to 4 PCs) and an encounter (up to 8 monsters), give each
@@ -9,6 +9,10 @@ decided, then run hundreds of simulations to see how the fight tends to play out
 
 Everything runs client-side — no backend. Built with React + TypeScript + Vite and
 deployed as a static site to GitHub Pages.
+
+## Rules edition
+
+**Rules edition: D&D 2024 (rules glossary / 2024 PHB & MM).** The curated content is intended to use 2024 rules where the simulator supports the relevant mechanic.
 
 ## Features
 
@@ -31,10 +35,7 @@ deployed as a static site to GitHub Pages.
   Move actions advance or kite). Weapons/spells have a **range** (with long-range
   disadvantage) and spells can have a linear **AoE radius**. A Battlefield map on the
   Initiative tab plots everyone.
-- **Conditional feature riders:** bonus damage gated by a trigger — **Sneak Attack**
-  (once/turn, needs advantage or an ally adjacent to the target), **Rage** (bonus melee
-  damage + physical resistance while raging), and **Hunter's Mark/Hex** (bonus dice vs a
-  marked target). Add them to any attack from the action editor.
+- **Composable features:** combatants can carry reusable features with trigger predicates and resources. Curated examples include **Sneak Attack** (once/turn, needs advantage or an ally adjacent to the target), **Rage** (bonus melee damage + physical resistance while raging), and **Hunter's Mark/Hex** (bonus dice vs a marked target). Legacy conditional riders remain import-compatible for older scenarios.
 - **Flexible targeting:** reusable, explicit **target priority lists** (e.g. "enemy1 →
   enemy2 → then nearest") referenced by rules, plus nearest/lowest-HP fallbacks — no
   assumption of omniscient knowledge.
