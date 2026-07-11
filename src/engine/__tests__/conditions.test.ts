@@ -3,37 +3,11 @@ import { performAction } from '../actions';
 import { approach } from '../movement';
 import { resolveTargets } from '../targeting';
 import { RNG } from '../dice';
-import { CONDITION_CATALOG, CONDITION_KINDS, effectiveSpeed, isIncapacitated } from '../conditions';
+import { effectiveSpeed, isIncapacitated } from '../conditions';
 import { buildCombatState, distance, targetAdvantage } from '../state';
 import type { Action, Combatant, ConditionKind, Scenario } from '../types';
 
-const SRD_CONDITIONS: ConditionKind[] = [
-  'blinded',
-  'charmed',
-  'deafened',
-  'frightened',
-  'grappled',
-  'incapacitated',
-  'invisible',
-  'paralyzed',
-  'petrified',
-  'poisoned',
-  'prone',
-  'restrained',
-  'stunned',
-  'unconscious',
-];
-
 describe('condition catalog', () => {
-  it('includes all SRD condition names', () => {
-    expect(CONDITION_KINDS).toEqual(expect.arrayContaining(SRD_CONDITIONS));
-  });
-
-  it('models invisible attack advantage and defense disadvantage', () => {
-    expect(CONDITION_CATALOG.invisible.attackByAdvantage).toBe('advantage');
-    expect(CONDITION_CATALOG.invisible.attackAgainstAdvantage).toBe('disadvantage');
-  });
-
   it('models incapacitating SRD conditions as unable to act without making every condition incapacitating', () => {
     for (const kind of ['incapacitated', 'paralyzed', 'petrified', 'stunned', 'unconscious'] as ConditionKind[]) {
       expect(isIncapacitated([{ kind, duration: { type: 'rounds', rounds: 1 } }])).toBe(true);

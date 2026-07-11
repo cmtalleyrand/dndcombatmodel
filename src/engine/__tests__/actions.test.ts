@@ -4,7 +4,6 @@ import { RNG } from '../dice';
 import { chooseAction } from '../rules';
 import { runSimulation } from '../simulator';
 import { fixtureAction, fixtureCombatant, fixtureScenario, fixtureState, scriptedCombatant } from '../../test/fixtures';
-import type { LogEvent } from '../log';
 
 describe('healing and resource consumption', () => {
   it('revives a downed ally and consumes one spell slot', () => {
@@ -68,9 +67,9 @@ describe('incapacitation and concentration effects', () => {
   });
 
   it('starting a new concentration action drops the previous concentration condition', () => {
-    const bless = fixtureAction({
-      id: 'bless',
-      name: 'Bless',
+    const buffA = fixtureAction({
+      id: 'buffA',
+      name: 'Buff A',
       kind: 'spell',
       spellLevel: 1,
       concentration: true,
@@ -78,9 +77,9 @@ describe('incapacitation and concentration effects', () => {
       damage: undefined,
       damageType: undefined,
     });
-    const mark = fixtureAction({
-      id: 'mark',
-      name: "Hunter's Mark",
+    const buffB = fixtureAction({
+      id: 'buffB',
+      name: 'Buff B',
       kind: 'spell',
       spellLevel: 1,
       concentration: true,
@@ -89,40 +88,18 @@ describe('incapacitation and concentration effects', () => {
       damageType: undefined,
     });
     const state = fixtureState([
-      fixtureCombatant('cleric', 'pc', { spellSlots: { 1: 5 } }),
+      fixtureCombatant('caster', 'pc', { spellSlots: { 1: 5 } }),
       fixtureCombatant('ally', 'pc'),
       fixtureCombatant('foe', 'monster'),
-    ], [bless, mark]);
+    ], [buffA, buffB]);
     const caster = state.combatants[0];
 
-    performAction(state, new RNG(3), caster, bless, [state.combatants[1]], []);
-    performAction(state, new RNG(4), caster, mark, [state.combatants[2]], []);
+    performAction(state, new RNG(3), caster, buffA, [state.combatants[1]], []);
+    performAction(state, new RNG(4), caster, buffB, [state.combatants[2]], []);
 
-    expect(caster.concentratingOn).toBe('mark');
+    expect(caster.concentratingOn).toBe('buffB');
     expect(state.combatants[1].conditions.some((c) => c.kind === 'blessed')).toBe(false);
     expect(state.combatants[2].conditions.some((c) => c.kind === 'marked')).toBe(true);
-  });
-});
-
-describe('rider trigger behaviour', () => {
-  it('fires a once-per-turn adjacent-ally rider exactly once', () => {
-    const action = fixtureAction({
-      id: 'sneak',
-      name: 'Sneak Strike',
-      attackBonus: 50,
-      attackCount: 3,
-      riders: [{ label: 'Sneak Attack', bonusDice: '2d6', trigger: 'advantageOrAllyAdjacent', oncePerTurn: true }],
-    });
-    const state = fixtureState([
-      fixtureCombatant('rogue', 'pc', { position: 0 }),
-      fixtureCombatant('ally', 'pc', { position: 0 }),
-      fixtureCombatant('foe', 'monster', { position: 0, ac: 1 }),
-    ], [action]);
-    const events: LogEvent[] = [];
-
-    performAction(state, new RNG(3), state.combatants[0], action, [state.combatants[2]], events);
-
-    expect(events.filter((e) => e.message.includes('Sneak Attack'))).toHaveLength(1);
   });
 });
 

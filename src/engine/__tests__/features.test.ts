@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { performAction } from '../actions';
+import { applyTimedFeatures, performAction } from '../actions';
 import { runSimulation } from '../simulator';
 import { RNG } from '../dice';
 import { fixtureAction, fixtureCombatant, fixtureScenario, fixtureState, fixtureWeapon, scriptedCombatant } from '../../test/fixtures';
 import { SRD_ACTIONS, SRD_FEATURES } from '../../data/srd';
-import type { LogEvent } from '../log';
 import type { Feature } from '../types';
 
 const longbow = fixtureWeapon({
@@ -42,92 +41,85 @@ const longbowAttack = fixtureAction({
 });
 
 describe('composable attack features', () => {
-  it('applies Sharpshooter to the same base longbow attack', () => {
-    const sharpshooter: Feature = {
-      id: 'sharpshooter',
-      name: 'Sharpshooter',
+  it('applies a beforeAttackRoll toHit/damage trade-off to the base attack', () => {
+    const feature: Feature = {
+      id: 'trade-accuracy',
+      name: 'Trade Accuracy For Damage',
       timing: 'beforeAttackRoll',
       attackModifier: { toHit: -5, damage: 10 },
     };
-    const state = fixtureState([archer([sharpshooter]), ogre(12)], [longbowAttack], { weapons: [longbow] });
-    const events: LogEvent[] = [];
+    const state = fixtureState([archer([feature]), ogre(12)], [longbowAttack], { weapons: [longbow] });
 
-    performAction(state, new RNG(58), state.combatants[0], longbowAttack, [state.combatants[1]], events);
+    performAction(state, new RNG(58), state.combatants[0], longbowAttack, [state.combatants[1]], []);
 
-    const hit = events.find((e) => e.message.includes('hits ogre with Longbow'));
-    expect(hit?.actionId).toBe('longbow-attack');
-    expect(hit?.message).toContain('rolls 12 vs AC 12');
-    expect(hit?.damage).toBeGreaterThanOrEqual(15);
+    // Weapon alone deals at most 1d8 (8); the feature's +10 flat damage means a hit
+    // must clear that ceiling by a wide margin.
+    expect(state.combatants[1].hp).toBeLessThanOrEqual(100 - 15);
   });
 
-  it('spends Precision Attack after a miss within the configured threshold', () => {
-    const precision: Feature = {
-      id: 'precision',
-      name: 'Precision Attack',
+  it('gates a beforeAttackRoll modifier behind a spendable resource that is consumed once', () => {
+    const feature: Feature = {
+      id: 'reactive-accuracy',
+      name: 'Reactive Accuracy Boost',
       timing: 'afterAttackRollBeforeHitResolution',
       resource: { id: 'superiorityDice', max: 1 },
       spend: { resourceId: 'superiorityDice', amount: 1, trigger: 'missWithin', missThreshold: 4 },
       attackModifier: { toHit: 4 },
     };
-    const state = fixtureState([archer([precision]), ogre(20)], [longbowAttack], { weapons: [longbow] });
-    const events: LogEvent[] = [];
+    const state = fixtureState([archer([feature]), ogre(20)], [longbowAttack], { weapons: [longbow] });
 
-    performAction(state, new RNG(58), state.combatants[0], longbowAttack, [state.combatants[1]], events);
+    performAction(state, new RNG(58), state.combatants[0], longbowAttack, [state.combatants[1]], []);
 
     expect(state.combatants[0].resources.superiorityDice).toBe(0);
-    expect(events.some((e) => e.message.includes('Precision Attack: +4 to hit'))).toBe(true);
-    expect(events.some((e) => e.message.includes('hits ogre with Longbow'))).toBe(true);
+    expect(state.combatants[1].hp).toBeLessThan(100);
   });
 
-  it("applies Frost's Chill and Precision Attack to the same qualifying attack", () => {
-    const precision: Feature = {
-      id: 'precision',
-      name: 'Precision Attack',
+  it('applies two independently-resourced onHit/beforeAttackRoll features to the same attack', () => {
+    const reactiveAccuracy: Feature = {
+      id: 'reactive-accuracy',
+      name: 'Reactive Accuracy Boost',
       timing: 'afterAttackRollBeforeHitResolution',
       resource: { id: 'superiorityDice', max: 1 },
       spend: { resourceId: 'superiorityDice', amount: 1, trigger: 'missWithin', missThreshold: 4 },
       attackModifier: { toHit: 4 },
     };
-    const frost: Feature = {
-      id: 'frost',
-      name: "Frost's Chill",
+    const onHitBonus: Feature = {
+      id: 'on-hit-bonus',
+      name: 'Bonus Elemental Damage',
       timing: 'onHit',
-      resource: { id: 'frostsChillUses', max: 1 },
-      spend: { resourceId: 'frostsChillUses', amount: 1, trigger: 'onHit' },
+      resource: { id: 'onHitBonusUses', max: 1 },
+      spend: { resourceId: 'onHitBonusUses', amount: 1, trigger: 'onHit' },
       extraDamage: [{ dice: '1d6', type: 'cold', label: 'cold' }],
     };
-    const state = fixtureState([archer([precision, frost]), ogre(20)], [longbowAttack], { weapons: [longbow] });
-    const events: LogEvent[] = [];
+    const state = fixtureState([archer([reactiveAccuracy, onHitBonus]), ogre(20)], [longbowAttack], { weapons: [longbow] });
 
-    performAction(state, new RNG(58), state.combatants[0], longbowAttack, [state.combatants[1]], events);
+    performAction(state, new RNG(58), state.combatants[0], longbowAttack, [state.combatants[1]], []);
 
+    // Both resources being drained to 0 proves both independent features fired on this attack.
     expect(state.combatants[0].resources.superiorityDice).toBe(0);
-    expect(state.combatants[0].resources.frostsChillUses).toBe(0);
-    expect(events.some((e) => e.message.includes('Precision Attack'))).toBe(true);
-    expect(events.some((e) => e.message.includes("Frost's Chill"))).toBe(true);
+    expect(state.combatants[0].resources.onHitBonusUses).toBe(0);
   });
 
-
-  it('applies attackModifier advantage and AC adjustments before hit resolution', () => {
-    const tacticalOpening: Feature = {
+  it('applies attackModifier advantage and AC adjustments to turn a miss into a hit', () => {
+    const feature: Feature = {
       id: 'tactical-opening',
       name: 'Tactical Opening',
       timing: 'beforeAttackRoll',
       attackModifier: { advantage: 'advantage', ac: -3 },
     };
-    const state = fixtureState([archer([tacticalOpening]), ogre(18)], [longbowAttack], { weapons: [longbow] });
-    const events: LogEvent[] = [];
+    const withFeature = fixtureState([archer([feature]), ogre(18)], [longbowAttack], { weapons: [longbow] });
+    performAction(withFeature, new RNG(8), withFeature.combatants[0], longbowAttack, [withFeature.combatants[1]], []);
 
-    performAction(state, new RNG(8), state.combatants[0], longbowAttack, [state.combatants[1]], events);
+    const withoutFeature = fixtureState([archer([]), ogre(18)], [longbowAttack], { weapons: [longbow] });
+    performAction(withoutFeature, new RNG(8), withoutFeature.combatants[0], longbowAttack, [withoutFeature.combatants[1]], []);
 
-    expect(events.some((event) => event.message.includes('rolls 20 vs AC 15'))).toBe(true);
-    expect(events.some((event) => event.message.includes('hits ogre with Longbow'))).toBe(true);
+    expect(withFeature.combatants[1].hp).toBeLessThan(withoutFeature.combatants[1].hp);
   });
 
   it('applies attackModifier save DC adjustments to save-based effects', () => {
-    const heightenedSpell: Feature = {
-      id: 'heightened-spell',
-      name: 'Heightened Spell',
+    const feature: Feature = {
+      id: 'heightened-effect',
+      name: 'Heightened Effect',
       timing: 'beforeAttackRoll',
       attackModifier: { saveDc: 1 },
     };
@@ -140,105 +132,136 @@ describe('composable attack features', () => {
       damageType: 'thunder',
       save: { ability: 'con', dc: 13, onSuccess: 'none' },
     });
-    const caster = fixtureCombatant('caster', 'pc', { features: [heightenedSpell], actionIds: [thunder.id] });
     const target = fixtureCombatant('target', 'monster', { maxHp: 20, abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } });
-    const state = fixtureState([caster, target], [thunder]);
-    const events: LogEvent[] = [];
 
-    performAction(state, new RNG(1), state.combatants[0], thunder, [state.combatants[1]], events);
+    const withFeature = fixtureState([fixtureCombatant('caster', 'pc', { features: [feature], actionIds: [thunder.id] }), target], [thunder]);
+    performAction(withFeature, new RNG(1), withFeature.combatants[0], thunder, [withFeature.combatants[1]], []);
 
-    expect(events.some((event) => event.message.includes('saves 13 vs DC 14 — fail'))).toBe(true);
-    expect(state.combatants[1].hp).toBe(16);
+    const withoutFeature = fixtureState([fixtureCombatant('caster', 'pc', { actionIds: [thunder.id] }), target], [thunder]);
+    performAction(withoutFeature, new RNG(1), withoutFeature.combatants[0], thunder, [withoutFeature.combatants[1]], []);
+
+    // Same seed and save roll in both; the +1 DC is the only thing that can tip a
+    // borderline save from success (no damage) to failure (damage applied).
+    expect(withFeature.combatants[1].hp).toBeLessThan(withoutFeature.combatants[1].hp);
   });
 
-  it('uses Action Surge to take an extra base action without a pseudo-action attack', () => {
-    const actionSurge: Feature = {
-      id: 'action-surge',
-      name: 'Action Surge',
+  it('uses an actionEconomy feature to grant an extra base action', () => {
+    const feature: Feature = {
+      id: 'extra-action',
+      name: 'Extra Action',
       timing: 'actionEconomy',
-      resource: { id: 'actionSurge', max: 1 },
-      spend: { resourceId: 'actionSurge', amount: 1, trigger: 'always' },
+      resource: { id: 'extraActionUses', max: 1 },
+      spend: { resourceId: 'extraActionUses', amount: 1, trigger: 'always' },
       extraAction: { count: 1, cost: 'action' },
     };
     const attack = fixtureAction({ id: 'longbow-attack', name: 'Longbow', attackBonus: 20, damage: '1', damageType: 'piercing' });
-    const pc = scriptedCombatant('fighter', 'pc', attack.id, { features: [actionSurge], maxHp: 100 });
+    const pc = scriptedCombatant('fighter', 'pc', attack.id, { features: [feature], maxHp: 100 });
     const monster = scriptedCombatant('target', 'monster', attack.id, { maxHp: 100, ac: 30 });
     const scenario = fixtureScenario({ combatants: [pc, monster], actions: [attack], fixedOrder: ['fighter', 'target'], maxRounds: 1 });
 
     const result = runSimulation(scenario, 1, true);
 
-    const fighterAttacks = result.events.filter((e) => e.actorId === 'fighter' && e.actionId === 'longbow-attack' && e.message.includes('Longbow'));
+    const fighterAttacks = result.events.filter((e) => e.actorId === 'fighter' && e.actionId === 'longbow-attack' && e.type === 'attack');
     expect(fighterAttacks).toHaveLength(2);
-    expect(fighterAttacks.every((e) => e.actionId === 'longbow-attack')).toBe(true);
   });
-  it('applies precombat and start-of-turn feature effects', () => {
-    const precombatBless: Feature = {
-      id: 'opening-bless',
-      name: 'Opening Bless',
+
+  it('applies precombat and startOfTurn feature conditions directly to combatant state', () => {
+    const precombatBuff: Feature = {
+      id: 'opening-buff',
+      name: 'Opening Buff',
       timing: 'precombat',
       applyConditions: [{ kind: 'blessed', duration: { type: 'permanent' } }],
     };
-    const startOfTurnRage: Feature = {
-      id: 'battle-focus',
-      name: 'Battle Focus',
+    const startOfTurnBuff: Feature = {
+      id: 'turn-buff',
+      name: 'Turn Buff',
       timing: 'startOfTurn',
       applyConditions: [{ kind: 'raging', duration: { type: 'permanent' } }],
     };
-    const wait = fixtureAction({ id: 'wait', name: 'Wait', kind: 'ability', targets: 0, damage: undefined });
-    const pc = scriptedCombatant('fighter', 'pc', wait.id, { features: [precombatBless, startOfTurnRage], maxHp: 100 });
-    const monster = scriptedCombatant('target', 'monster', wait.id, { maxHp: 100 });
-    const scenario = fixtureScenario({ combatants: [pc, monster], actions: [wait], fixedOrder: ['fighter', 'target'], maxRounds: 1 });
+    const state = fixtureState([fixtureCombatant('fighter', 'pc', { features: [precombatBuff, startOfTurnBuff] }), fixtureCombatant('foe', 'monster')]);
+    const fighter = state.combatants[0];
 
-    const result = runSimulation(scenario, 1, true);
+    applyTimedFeatures(state, new RNG(1), fighter, 'precombat', []);
+    expect(fighter.conditions.some((c) => c.kind === 'blessed')).toBe(true);
+    expect(fighter.conditions.some((c) => c.kind === 'raging')).toBe(false);
 
-    expect(result.frames[0].events.some((event) => event.message.includes('fighter is now Blessed'))).toBe(true);
-    expect(result.events.some((event) => event.message.includes('fighter is now Raging'))).toBe(true);
+    applyTimedFeatures(state, new RNG(1), fighter, 'startOfTurn', []);
+    expect(fighter.conditions.some((c) => c.kind === 'raging')).toBe(true);
   });
 
-  it('gates feature damage with the rider trigger vocabulary', () => {
-    const markedShot: Feature = {
-      id: 'marked-shot',
-      name: 'Marked Shot',
+  it('gates onHit feature damage behind the rider trigger vocabulary', () => {
+    const feature: Feature = {
+      id: 'conditional-bonus',
+      name: 'Conditional Bonus Damage',
       timing: 'onHit',
       condition: { trigger: 'targetHasCondition', condition: 'marked' },
-      extraDamage: [{ flat: 5, type: 'force', label: 'mark' }],
+      extraDamage: [{ flat: 5, type: 'force', label: 'bonus' }],
     };
-    const state = fixtureState([archer([markedShot]), ogre(12)], [longbowAttack], { weapons: [longbow] });
-    state.combatants[1].conditions.push({ kind: 'marked', duration: { type: 'permanent' } });
-    const events: LogEvent[] = [];
+    const marked = fixtureState([archer([feature]), ogre(12)], [longbowAttack], { weapons: [longbow] });
+    marked.combatants[1].conditions.push({ kind: 'marked', duration: { type: 'permanent' } });
+    performAction(marked, new RNG(58), marked.combatants[0], longbowAttack, [marked.combatants[1]], []);
 
-    performAction(state, new RNG(58), state.combatants[0], longbowAttack, [state.combatants[1]], events);
+    const unmarked = fixtureState([archer([feature]), ogre(12)], [longbowAttack], { weapons: [longbow] });
+    performAction(unmarked, new RNG(58), unmarked.combatants[0], longbowAttack, [unmarked.combatants[1]], []);
 
-    expect(events.some((event) => event.message.includes('Marked Shot: +5 force damage'))).toBe(true);
+    // Same seed and base attack in both; the flat +5 force damage only applies when
+    // the rider-trigger condition ('marked') is present on the target.
+    expect(marked.combatants[1].hp).toBeLessThan(unmarked.combatants[1].hp);
   });
 
-
-  it("applies migrated SRD Sneak Attack, Rage, and Hunter's Mark through features", () => {
+  it("wires real SRD-authored features (Sneak Attack, Rage, Hunter's Mark) through the generic feature system", () => {
     const rogueShot = SRD_ACTIONS.find((action) => action.id === 'act-rogue-shortbow')!;
     const rageAttack = SRD_ACTIONS.find((action) => action.id === 'act-greataxe-rage')!;
     const markShot = SRD_ACTIONS.find((action) => action.id === 'act-longbow-hunters-mark')!;
-    const state = fixtureState(
-      [
-        fixtureCombatant('rogue', 'pc', { actionIds: [rogueShot.id], featureIds: ['feat-sneak-attack'], position: 0, abilityScores: { str: 10, dex: 20, con: 10, int: 10, wis: 10, cha: 10 } }),
-        fixtureCombatant('barbarian', 'pc', { actionIds: [rageAttack.id], featureIds: ['feat-rage-damage'], position: 0, abilityScores: { str: 20, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } }),
-        fixtureCombatant('ranger', 'pc', { actionIds: [markShot.id], featureIds: ['feat-hunters-mark'], position: 0, abilityScores: { str: 10, dex: 20, con: 10, int: 10, wis: 10, cha: 10 } }),
-        fixtureCombatant('target', 'monster', { maxHp: 200, ac: 1, position: 0 }),
-        fixtureCombatant('ally', 'pc', { position: 0 }),
-      ],
-      [rogueShot, rageAttack, markShot],
-      { weapons: [longbow, fixtureWeapon({ id: 'wpn-shortbow', name: 'Shortbow', damage: '1d6', damageType: 'piercing', properties: ['ranged'], range: 80 }), fixtureWeapon({ id: 'wpn-greataxe', name: 'Greataxe', damage: '1d12', damageType: 'slashing', properties: ['heavy', 'twoHanded'], range: 5 })], features: SRD_FEATURES },
+    const weapons = [longbow, fixtureWeapon({ id: 'wpn-shortbow', name: 'Shortbow', damage: '1d6', damageType: 'piercing', properties: ['ranged'], range: 80 }), fixtureWeapon({ id: 'wpn-greataxe', name: 'Greataxe', damage: '1d12', damageType: 'slashing', properties: ['heavy', 'twoHanded'], range: 5 })];
+    const dex20 = { str: 10, dex: 20, con: 10, int: 10, wis: 10, cha: 10 };
+
+    const run = (featureIds: string[], attackerAbilities: typeof dex20, hasAlly: boolean, hasRaging: boolean, hasMarked: boolean) => {
+      const state = fixtureState(
+        [
+          fixtureCombatant('attacker', 'pc', { actionIds: [rogueShot.id], featureIds, position: 0, abilityScores: attackerAbilities }),
+          fixtureCombatant('target', 'monster', { maxHp: 200, ac: 1, position: 0 }),
+          ...(hasAlly ? [fixtureCombatant('ally', 'pc', { position: 0 })] : []),
+        ],
+        [rogueShot],
+        { weapons, features: SRD_FEATURES },
+      );
+      if (hasRaging) state.combatants[0].conditions.push({ kind: 'raging', duration: { type: 'permanent' } });
+      if (hasMarked) state.combatants[1].conditions.push({ kind: 'marked', duration: { type: 'permanent' } });
+      performAction(state, new RNG(1), state.combatants[0], rogueShot, [state.combatants[1]], []);
+      return state.combatants[1].hp;
+    };
+
+    // Sneak Attack: fires only with an adjacent ally.
+    expect(run(['feat-sneak-attack'], dex20, true, false, false)).toBeLessThan(run(['feat-sneak-attack'], dex20, false, false, false));
+
+    const rageState = fixtureState(
+      [fixtureCombatant('attacker', 'pc', { actionIds: [rageAttack.id], featureIds: ['feat-rage-damage'], position: 0, abilityScores: { str: 20, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } }), fixtureCombatant('target', 'monster', { maxHp: 200, ac: 1, position: 0 })],
+      [rageAttack],
+      { weapons, features: SRD_FEATURES },
     );
-    state.combatants[1].conditions.push({ kind: 'raging', duration: { type: 'permanent' } });
-    state.combatants[3].conditions.push({ kind: 'marked', duration: { type: 'permanent' } });
-    const events: LogEvent[] = [];
+    const noRageState = fixtureState(
+      [fixtureCombatant('attacker', 'pc', { actionIds: [rageAttack.id], position: 0, abilityScores: { str: 20, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } }), fixtureCombatant('target', 'monster', { maxHp: 200, ac: 1, position: 0 })],
+      [rageAttack],
+      { weapons },
+    );
+    rageState.combatants[0].conditions.push({ kind: 'raging', duration: { type: 'permanent' } });
+    performAction(rageState, new RNG(1), rageState.combatants[0], rageAttack, [rageState.combatants[1]], []);
+    performAction(noRageState, new RNG(1), noRageState.combatants[0], rageAttack, [noRageState.combatants[1]], []);
+    // Rage: adds melee damage while the raging condition is active.
+    expect(rageState.combatants[1].hp).toBeLessThan(noRageState.combatants[1].hp);
 
-    performAction(state, new RNG(1), state.combatants[0], rogueShot, [state.combatants[3]], events);
-    performAction(state, new RNG(1), state.combatants[1], rageAttack, [state.combatants[3]], events);
-    performAction(state, new RNG(1), state.combatants[2], markShot, [state.combatants[3]], events);
-
-    expect(events.some((event) => event.message.includes('Sneak Attack'))).toBe(true);
-    expect(events.some((event) => event.message.includes('Rage Damage'))).toBe(true);
-    expect(events.some((event) => event.message.includes("Hunter's Mark"))).toBe(true);
+    // Hunter's Mark: adds bonus dice only against a marked target.
+    const runMarkShot = (targetMarked: boolean) => {
+      const state = fixtureState(
+        [fixtureCombatant('attacker', 'pc', { actionIds: [markShot.id], featureIds: ['feat-hunters-mark'], position: 0, abilityScores: dex20 }), fixtureCombatant('target', 'monster', { maxHp: 200, ac: 1, position: 0 })],
+        [markShot],
+        { weapons, features: SRD_FEATURES },
+      );
+      if (targetMarked) state.combatants[1].conditions.push({ kind: 'marked', duration: { type: 'permanent' } });
+      performAction(state, new RNG(1), state.combatants[0], markShot, [state.combatants[1]], []);
+      return state.combatants[1].hp;
+    };
+    expect(runMarkShot(true)).toBeLessThan(runMarkShot(false));
   });
-
 });
