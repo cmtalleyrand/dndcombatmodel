@@ -12,6 +12,20 @@ export function effectiveRange(action: Action, weapon?: Weapon): number {
   return action.range ?? Infinity;
 }
 
+/**
+ * A frightened creature "can't willingly move closer to the source of its fear" (5e). Returns
+ * true if moving in `dir` (+1 = toward higher position) would decrease the distance to any
+ * living source of a frightened condition on `actor`.
+ */
+function movesTowardFearSource(state: CombatState, actor: CombatantState, dir: 1 | -1): boolean {
+  for (const cond of actor.conditions) {
+    if (cond.kind !== 'frightened' || !cond.sourceId) continue;
+    const src = state.combatants.find((c) => c.base.id === cond.sourceId);
+    if (src && isAlive(src) && Math.sign(src.position - actor.position) === dir) return true;
+  }
+  return false;
+}
+
 /** Move `actor` toward `target` to get within `range`, spending up to remaining speed. */
 export function approach(
   state: CombatState,
@@ -28,6 +42,8 @@ export function approach(
   const step = Math.min(need, avail);
   if (step <= 0) return;
   const dir = target.position >= actor.position ? 1 : -1;
+  // Frightened: can't willingly close on the source of fear.
+  if (movesTowardFearSource(state, actor, dir)) return;
   actor.position += dir * step;
   actor.movedThisTurn += step;
   events.push({

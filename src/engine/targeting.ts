@@ -22,6 +22,19 @@ function eligible(c: CombatantState, excludeIncapacitated: boolean): boolean {
   return true;
 }
 
+/**
+ * Ids the actor may not target with a harmful/attack action. A charmed creature "can't attack
+ * the charmer or target it with harmful abilities" (5e) — the charmer is the sourceId of the
+ * charmed condition. Excluding these from the enemy pool + explicit lists enforces that.
+ */
+function forbiddenTargetIds(actor: CombatantState): Set<string> {
+  const ids = new Set<string>();
+  for (const cond of actor.conditions) {
+    if (cond.kind === 'charmed' && cond.sourceId) ids.add(cond.sourceId);
+  }
+  return ids;
+}
+
 /** Strategies that select a whole set regardless of count/explicit list. */
 const SET_STRATEGIES: TargetStrategy[] = ['allEnemies', 'allAllies', 'self'];
 
@@ -36,6 +49,7 @@ export function resolveTargets(
   count: number,
 ): CombatantState[] {
   const excl = selector.excludeIncapacitated ?? false;
+  const forbidden = forbiddenTargetIds(actor);
 
   // Whole-set strategies (and no explicit list) return their set directly.
   if (
@@ -43,7 +57,7 @@ export function resolveTargets(
     !selector.listId &&
     !(selector.namedTargets && selector.namedTargets.length)
   ) {
-    return computeStrategy(state, actor, selector.strategy, count, excl, []);
+    return computeStrategy(state, actor, selector.strategy, count, excl, [], forbidden);
   }
 
   // Resolve explicit entries + fallback (from a reusable list or inline).
@@ -64,12 +78,13 @@ export function resolveTargets(
   const result: CombatantState[] = [];
   for (const id of entries) {
     if (result.length >= count) break;
+    if (forbidden.has(id)) continue;
     const c = getState(state, id);
     if (c && eligible(c, excl) && !result.includes(c)) result.push(c);
   }
 
   if (result.length < count && fallback && fallback !== 'none') {
-    const more = computeStrategy(state, actor, fallback, count, excl, result);
+    const more = computeStrategy(state, actor, fallback, count, excl, result, forbidden);
     for (const c of more) {
       if (result.length >= count) break;
       if (!result.includes(c)) result.push(c);
@@ -87,8 +102,11 @@ function computeStrategy(
   count: number,
   excl: boolean,
   exclude: CombatantState[],
+  forbidden: Set<string> = new Set(),
 ): CombatantState[] {
-  const enemies = enemiesOf(state, actor).filter((c) => eligible(c, excl) && !exclude.includes(c));
+  const enemies = enemiesOf(state, actor).filter(
+    (c) => eligible(c, excl) && !exclude.includes(c) && !forbidden.has(c.base.id),
+  );
   // Healing should be able to target downed allies, so ally pools include the whole side.
   const allies = alliesOf(state, actor).filter((c) => !exclude.includes(c));
 

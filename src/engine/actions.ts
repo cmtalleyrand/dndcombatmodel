@@ -27,22 +27,39 @@ const BLESS_BONUS = '1d4';
 
 const PHYSICAL: DamageType[] = ['bludgeoning', 'piercing', 'slashing'];
 
-function hitChance(toHit: number, ac: number): number {
-  const needed = ac - toHit;
+/**
+ * Probability an attack lands, used only for tactical-policy EV previews (whether to spend a
+ * to-hit feature). Now accounts for advantage/disadvantage (roll-twice math) and Bless (the
+ * +1d4 approximated as its +2.5 average shift), so previews rank options the way the actual
+ * roll will resolve them — a flat 5%..95% base ignored both.
+ */
+function hitChance(toHit: number, ac: number, adv: Advantage = 'normal', bless = false): number {
+  const needed = ac - (toHit + (bless ? 2.5 : 0));
   const successfulFaces = Math.max(1, Math.min(19, 21 - needed));
-  return successfulFaces / 20;
+  const base = successfulFaces / 20;
+  if (adv === 'advantage') return 1 - (1 - base) ** 2;
+  if (adv === 'disadvantage') return base ** 2;
+  return base;
 }
 
-function usePreRollFeature(feature: Feature, policy: ModifierPolicy | undefined, baseToHit: number, targetAc: number): boolean {
+function usePreRollFeature(
+  feature: Feature,
+  policy: ModifierPolicy | undefined,
+  baseToHit: number,
+  targetAc: number,
+  adv: Advantage = 'normal',
+  bless = false,
+): boolean {
   if (!feature.attackModifier) return true;
   if (policy?.featureIds && !policy.featureIds.includes(feature.id)) return false;
   if (!policy || policy.kind === 'always') return true;
   if (policy.kind === 'never') return false;
   const modifiedToHit = baseToHit + (feature.attackModifier.toHit ?? 0);
-  if (policy.kind === 'minimumHitChance') return hitChance(modifiedToHit, targetAc) >= (policy.minimumHitChance ?? 0);
+  if (policy.kind === 'minimumHitChance') return hitChance(modifiedToHit, targetAc, adv, bless) >= (policy.minimumHitChance ?? 0);
   const damageDelta = policy.damageDelta ?? feature.attackModifier.damage ?? 0;
   const toHitDelta = policy.toHitDelta ?? feature.attackModifier.toHit ?? 0;
-  return hitChance(modifiedToHit, targetAc) * damageDelta + (hitChance(modifiedToHit, targetAc) - hitChance(baseToHit, targetAc)) * Math.max(0, damageDelta - toHitDelta) > 0;
+  const pMod = hitChance(modifiedToHit, targetAc, adv, bless);
+  return pMod * damageDelta + (pMod - hitChance(baseToHit, targetAc, adv, bless)) * Math.max(0, damageDelta - toHitDelta) > 0;
 }
 
 /** Combine typed resistance/immunity/vulnerability (combatant traits + conditions) into a multiplier. */
@@ -563,7 +580,7 @@ function resolveAttack(
         rangeAdv,
       );
       let toHit = profile.toHit;
-      const preRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll').filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, target.base.ac));
+      const preRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll').filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, target.base.ac, adv, bless));
       for (const feature of preRollFeatures) {
         toHit += feature.attackModifier?.toHit ?? 0;
         if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
