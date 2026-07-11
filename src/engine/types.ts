@@ -232,6 +232,12 @@ export interface FeatureResourceSpend {
 export interface AttackModifierEffect {
   toHit?: number;
   damage?: number;
+  /** Advantage state added to the attack roll; advantage and disadvantage cancel normally. */
+  advantage?: 'normal' | 'advantage' | 'disadvantage';
+  /** Additive modifier to a spell or ability save DC. */
+  saveDc?: number;
+  /** Additive modifier to the defender's AC for this attack; negative values make hits easier. */
+  ac?: number;
   label?: string;
 }
 

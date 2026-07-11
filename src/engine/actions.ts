@@ -608,17 +608,24 @@ function resolveAttack(
 
     for (let i = 0; i < attackCount; i++) {
       if (!isAlive(target)) break;
-      const adv = combineAdvantage(
+      const baseAdv = combineAdvantage(
         combineAdvantage(attackAdvantage(actor), targetAdvantage(target, actor)),
         rangeAdv,
       );
+      const candidatePreRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll', target, baseAdv, gap);
+      const featureAdv = candidatePreRollFeatures.reduce(
+        (current, feature) => combineAdvantage(current, feature.attackModifier?.advantage ?? 'normal'),
+        'normal' as Advantage,
+      );
+      const adv = combineAdvantage(baseAdv, featureAdv);
+      const preRollFeatures = candidatePreRollFeatures.filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, target.base.ac + (f.attackModifier?.ac ?? 0), adv, bless));
       let toHit = profile.toHit;
-      const preRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll', target, adv, gap).filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, target.base.ac, adv, bless));
       for (const feature of preRollFeatures) {
         toHit += feature.attackModifier?.toHit ?? 0;
         if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
       }
       let damageModifier = preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.damage ?? 0), 0);
+      const ac = target.base.ac + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.ac ?? 0), 0);
       let blessNote = '';
       if (bless) {
         const b = rollDice(rng, BLESS_BONUS).total;
@@ -629,9 +636,9 @@ function resolveAttack(
       let rollTotal = roll.total;
       const postRollFeatures = applicableFeatures(state, actor, action, 'afterAttackRollBeforeHitResolution', target, adv, gap);
       for (const feature of postRollFeatures) {
-        if (!canSpendFeature(actor, feature) || roll.isCritMiss || roll.isCrit || rollTotal >= target.base.ac) continue;
+        if (!canSpendFeature(actor, feature) || roll.isCritMiss || roll.isCrit || rollTotal >= ac) continue;
         const maximum = feature.spend?.missThreshold ?? feature.attackModifier?.toHit ?? 0;
-        if (feature.spend?.trigger === 'missWithin' && target.base.ac - rollTotal > maximum) continue;
+        if (feature.spend?.trigger === 'missWithin' && ac - rollTotal > maximum) continue;
         const bonus = feature.attackModifier?.toHit ?? 0;
         rollTotal += bonus;
         spendFeature(actor, feature);
@@ -646,7 +653,7 @@ function resolveAttack(
           message: `  ↳ ${feature.name}: +${bonus} to hit.`,
         });
       }
-      const hit = roll.isCrit || (!roll.isCritMiss && rollTotal >= target.base.ac);
+      const hit = roll.isCrit || (!roll.isCritMiss && rollTotal >= ac);
 
       if (!hit) {
         events.push({
@@ -657,7 +664,7 @@ function resolveAttack(
           actionId: action.id,
           targetId: target.base.id,
           targetName: target.base.name,
-          message: `${actor.base.name} attacks ${target.base.name} with ${action.name}: rolls ${rollTotal}${blessNote} vs AC ${target.base.ac} — miss.`,
+          message: `${actor.base.name} attacks ${target.base.name} with ${action.name}: rolls ${rollTotal}${blessNote} vs AC ${ac} — miss.`,
         });
         continue;
       }
@@ -699,7 +706,7 @@ function resolveAttack(
         damage: dmg,
         message: `${actor.base.name} hits ${target.base.name} with ${action.name}${
           roll.isCrit ? ' (CRIT)' : ''
-        }: rolls ${rollTotal}${blessNote} vs AC ${target.base.ac} — ${dmg} damage (${target.base.name} at ${target.hp} HP).`,
+        }: rolls ${rollTotal}${blessNote} vs AC ${ac} — ${dmg} damage (${target.base.name} at ${target.hp} HP).`,
       });
       for (const feature of onHitFeatures) {
         if (feature.applyConditions?.length) applyConditionsTo(target, actor, feature.applyConditions, state, events);
@@ -816,7 +823,11 @@ function resolveSpellOrAbility(
     if (action.save) {
       // Saving-throw effect with a derived DC.
       const ability = action.save.ability;
-      const dc = spellSaveDC(actor.base, action);
+      const dcFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll', target).filter((f) => canSpendFeature(actor, f));
+      const dc = spellSaveDC(actor.base, action) + dcFeatures.reduce((sum, f) => sum + (f.attackModifier?.saveDc ?? 0), 0);
+      for (const feature of dcFeatures) {
+        if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
+      }
       const { saved, autoFail, total: saveTotal } = resolveSave(rng, target, ability, dc);
 
       let dmg = 0;
@@ -845,11 +856,21 @@ function resolveSpellOrAbility(
       });
     } else if (usesSpellAttack) {
       // Spell attack roll with a derived attack bonus.
-      const adv = combineAdvantage(attackAdvantage(actor), targetAdvantage(target, actor));
+      const baseAdv = combineAdvantage(attackAdvantage(actor), targetAdvantage(target, actor));
+      const preRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll', target, baseAdv, distance(actor, target)).filter((f) => canSpendFeature(actor, f));
+      const adv = combineAdvantage(
+        baseAdv,
+        preRollFeatures.reduce((current, feature) => combineAdvantage(current, feature.attackModifier?.advantage ?? 'normal'), 'normal' as Advantage),
+      );
       let toHit = action.attackBonus ?? spellAttackBonus(actor.base, action);
+      toHit += preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.toHit ?? 0), 0);
+      const ac = target.base.ac + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.ac ?? 0), 0);
+      for (const feature of preRollFeatures) {
+        if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
+      }
       if (bless) toHit += rollDice(rng, BLESS_BONUS).total;
       const roll = rollD20(rng, toHit, adv);
-      const hit = roll.isCrit || (!roll.isCritMiss && roll.total >= target.base.ac);
+      const hit = roll.isCrit || (!roll.isCritMiss && roll.total >= ac);
       let dmg = 0;
       if (hit) {
         dmg = rollDamageTotal(

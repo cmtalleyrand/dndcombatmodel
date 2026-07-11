@@ -107,6 +107,50 @@ describe('composable attack features', () => {
     expect(events.some((e) => e.message.includes("Frost's Chill"))).toBe(true);
   });
 
+
+  it('applies attackModifier advantage and AC adjustments before hit resolution', () => {
+    const tacticalOpening: Feature = {
+      id: 'tactical-opening',
+      name: 'Tactical Opening',
+      timing: 'beforeAttackRoll',
+      attackModifier: { advantage: 'advantage', ac: -3 },
+    };
+    const state = fixtureState([archer([tacticalOpening]), ogre(18)], [longbowAttack], { weapons: [longbow] });
+    const events: LogEvent[] = [];
+
+    performAction(state, new RNG(8), state.combatants[0], longbowAttack, [state.combatants[1]], events);
+
+    expect(events.some((event) => event.message.includes('rolls 20 vs AC 15'))).toBe(true);
+    expect(events.some((event) => event.message.includes('hits ogre with Longbow'))).toBe(true);
+  });
+
+  it('applies attackModifier save DC adjustments to save-based effects', () => {
+    const heightenedSpell: Feature = {
+      id: 'heightened-spell',
+      name: 'Heightened Spell',
+      timing: 'beforeAttackRoll',
+      attackModifier: { saveDc: 1 },
+    };
+    const thunder = fixtureAction({
+      id: 'thunder',
+      name: 'Thunder',
+      kind: 'spell',
+      targets: 1,
+      damage: '4',
+      damageType: 'thunder',
+      save: { ability: 'con', dc: 13, onSuccess: 'none' },
+    });
+    const caster = fixtureCombatant('caster', 'pc', { features: [heightenedSpell], actionIds: [thunder.id] });
+    const target = fixtureCombatant('target', 'monster', { maxHp: 20, abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } });
+    const state = fixtureState([caster, target], [thunder]);
+    const events: LogEvent[] = [];
+
+    performAction(state, new RNG(1), state.combatants[0], thunder, [state.combatants[1]], events);
+
+    expect(events.some((event) => event.message.includes('saves 13 vs DC 14 — fail'))).toBe(true);
+    expect(state.combatants[1].hp).toBe(16);
+  });
+
   it('uses Action Surge to take an extra base action without a pseudo-action attack', () => {
     const actionSurge: Feature = {
       id: 'action-surge',
