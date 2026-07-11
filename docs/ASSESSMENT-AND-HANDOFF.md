@@ -35,14 +35,10 @@ on-hit effects that duplicate it; those must go (§2).
   (`?? []`), so scenarios without features load and run unchanged.
 
 The model can now express what curated content needs: all `FeatureTiming` values are live,
-`Feature.condition` gates on combat state, and binding is validated. 
-
-To-do:
-
-1. **The AI converter drops supported timings.** `convertDraftToScenario.ts` filters
-   `triggeredEffects` to a subset, so a model-decomposed `startOfTurn`/`startOfCombat` effect
-   is discarded. Widen the filter to every timing the engine now supports and surface any
-   effect it can't place instead of dropping it silently.
+`Feature.condition` gates on combat state, binding is validated, features carry a
+`category` classification, and the converter maps every AI timing (unmappable ones are
+flagged by `validateDraft` rather than dropped). The remaining feature-system work is the
+content conversion in §2.
 
 ---
 
@@ -147,15 +143,5 @@ validate/repair → review (easy-read + JSON) → approve (replaces scenario)**.
 ### Priority for a UX pass
 Undo + merge-vs-replace on Approve (3) → editable approval preview (1) → "unapplied
 features" warning (4) → real revise thread (2) → surface the tab earlier (5).
-
----
-
-## 6. Remaining app/UX work
-
-- **Inline target-list authoring** in the RuleBuilder: let a user create or pick a target
-  list where a rule references it, instead of only on the Action Library tab.
-- **Richer results:** let the user pick which sampled run to view and show a worst-case
-  replay (`statistics.runMany` must retain more than the first run's frames), and add PNG
-  export (draw the result bars to a `<canvas>`; no external library needed).
 
 *End of handoff document.*
