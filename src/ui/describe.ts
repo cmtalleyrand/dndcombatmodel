@@ -69,6 +69,12 @@ export function describeAction(
 ): string {
   if (action.kind === 'dodge') return 'Dodge — attackers have disadvantage.';
   if (action.kind === 'move') return 'Move / reposition on the 1D battlefield.';
+  if (action.kind === 'dash') return 'Dash — spend the action to move farther.';
+  if (action.kind === 'disengage') return 'Disengage — move without provoking opportunity attacks.';
+  if (action.kind === 'help') return 'Help — aid another creature.';
+  if (action.kind === 'hide') return 'Hide — attempt to become hidden.';
+  if (action.kind === 'ready') return 'Ready — prepare a triggered action.';
+  if (action.kind === 'search') return 'Search — look for something in combat.';
 
   if (action.kind === 'attack') {
     const weapon = action.weaponId ? weaponsById[action.weaponId] : undefined;

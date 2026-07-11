@@ -28,6 +28,16 @@ export const ACTION_MOVE: Action = {
   note: 'Linear 1D movement; uses the whole turn for now.',
 };
 
+
+const BASIC_ACTIONS: Action[] = [
+  { id: 'act-dash', name: 'Dash', kind: 'dash', targets: 0, note: 'Spend the action to move farther; abstracted as an advance on the 1D battlefield.' },
+  { id: 'act-disengage', name: 'Disengage', kind: 'disengage', targets: 0, note: 'Spend the action to move without provoking opportunity attacks; recorded for scripts.' },
+  { id: 'act-help', name: 'Help', kind: 'help', targets: 1, note: 'Aid another creature; recorded as a non-damaging utility action.' },
+  { id: 'act-hide', name: 'Hide', kind: 'hide', targets: 0, note: 'Attempt to become hidden; recorded as a non-damaging utility action.' },
+  { id: 'act-ready', name: 'Ready', kind: 'ready', targets: 0, note: 'Prepare a triggered action; recorded because reactions are not separately modelled.' },
+  { id: 'act-search', name: 'Search', kind: 'search', targets: 0, note: 'Look for something in combat; recorded as a non-damaging utility action.' },
+];
+
 function weaponAttack(id: string, name: string, weaponId: string, overrides: Partial<Action> = {}): Action {
   return {
     id,
@@ -411,6 +421,7 @@ const SPELL_AND_ABILITY_ACTIONS: Action[] = [
 export const SRD_ACTIONS: Action[] = [
   ACTION_DODGE,
   ACTION_MOVE,
+  ...BASIC_ACTIONS,
   ...WEAPON_ATTACK_ACTIONS,
   ...SPELL_AND_ABILITY_ACTIONS,
   // --- existing sample spells (attack/DC derive from the caster's spellcasting ability) ---
@@ -467,38 +478,13 @@ export const SRD_ACTIONS: Action[] = [
     cantripScaling: true,
     note: 'Cantrip spell attack (attack bonus derived) — no slot cost. Damage scales at levels 5/11/17.',
   },
-  // --- demo content for Phase 3 features ---
-  {
-    id: 'act-rogue-shortbow',
-    name: 'Shortbow + Sneak Attack',
-    kind: 'attack',
-    targets: 1,
-    weaponId: 'wpn-shortbow',
-    note: '+2d6 once per turn when you have advantage or an ally is adjacent to the target.',
-  },
-  {
-    id: 'act-greataxe-rage',
-    name: 'Greataxe + Rage Damage',
-    kind: 'attack',
-    targets: 1,
-    weaponId: 'wpn-greataxe',
-    note: '+2 damage while raging.',
-  },
-  {
-    id: 'act-longbow-hunters-mark',
-    name: "Longbow + Hunter's Mark",
-    kind: 'attack',
-    targets: 1,
-    weaponId: 'wpn-longbow',
-    note: '+1d6 when the target is marked.',
-  },
   {
     id: 'act-rage',
     name: 'Rage',
     kind: 'ability',
-    targets: 1, // self
+    targets: 1,
     uses: 3,
-    note: 'Self-buff: physical resistance + bonus melee damage while raging (pair with a Rage rider on a melee attack).',
+    note: 'Self-buff: physical resistance + bonus melee damage while raging.',
   },
   {
     id: 'act-hunters-mark',
@@ -508,11 +494,11 @@ export const SRD_ACTIONS: Action[] = [
     spellLevel: 1,
     range: 90,
     concentration: true,
-    note: 'Marks a target; attacks against it deal bonus dice (pair with a marked-target rider).',
+    note: "Marks a target; attacks against it deal bonus dice through the Hunter's Mark feature.",
   },
   {
     id: 'act-fireball',
-    name: 'Fireball (AoE demo)',
+    name: 'Fireball',
     kind: 'spell',
     targets: 1,
     spellLevel: 3,
@@ -592,7 +578,7 @@ const MAGIC_ITEM_FEATURES: Feature[] = [
   { id: 'feat-mace-of-disruption', name: 'Mace of Disruption', category: 'itemEffect', timing: 'onHit', extraDamage: [{ dice: '2d6', type: 'radiant', label: 'Disruption' }], actionIds: ['act-mace'] },
   { id: 'feat-mace-of-smiting', name: 'Mace of Smiting', category: 'itemEffect', timing: 'onHit', extraDamage: [{ dice: '2d6', type: 'force', label: 'Smiting' }], actionIds: ['act-mace'] },
   { id: 'feat-weapon-of-warning', name: 'Weapon of Warning', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { advantage: 'advantage', label: 'Warning' }, actionIds: weaponActionIds, oncePerTurn: true },
-  { id: 'feat-bracers-of-archery', name: 'Bracers of Archery', category: 'itemEffect', timing: 'onHit', extraDamage: [{ flat: 2, type: 'piercing', label: 'Bracers of Archery' }], actionIds: ['act-shortbow', 'act-longbow', 'act-rogue-shortbow', 'act-longbow-hunters-mark'] },
+  { id: 'feat-bracers-of-archery', name: 'Bracers of Archery', category: 'itemEffect', timing: 'onHit', extraDamage: [{ flat: 2, type: 'piercing', label: 'Bracers of Archery' }], actionIds: ['act-shortbow', 'act-longbow'] },
   { id: 'feat-wand-of-war-mage-1', name: 'Wand of the War Mage +1', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 1, label: '+1 spell focus' } },
   { id: 'feat-wand-of-war-mage-2', name: 'Wand of the War Mage +2', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 2, label: '+2 spell focus' } },
   { id: 'feat-wand-of-war-mage-3', name: 'Wand of the War Mage +3', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 3, label: '+3 spell focus' } },
@@ -687,7 +673,7 @@ export const SRD_FEATURES: Feature[] = [
     timing: 'onHit',
     condition: { trigger: 'advantageOrAllyAdjacent' },
     extraDamage : [{ dice: '2d6', type: 'piercing', label: 'Sneak Attack' }],
-    actionIds: ['act-rogue-shortbow'],
+    actionIds: ['act-shortbow'],
     oncePerTurn: true,
   },
   {
@@ -697,7 +683,7 @@ export const SRD_FEATURES: Feature[] = [
     timing: 'onHit',
     condition: { trigger: 'selfHasCondition', condition: 'raging', meleeOnly: true },
     extraDamage : [{ flat: 2, type: 'slashing', label: 'Rage Damage' }],
-    actionIds: ['act-greataxe-rage'],
+    actionIds: ['act-greataxe'],
   },
   {
     id: 'feat-hunters-mark',
@@ -706,7 +692,7 @@ export const SRD_FEATURES: Feature[] = [
     timing: 'onHit',
     condition: { trigger: 'targetHasCondition', condition: 'marked' },
     extraDamage : [{ dice: '1d6', type: 'piercing', label: "Hunter's Mark" }],
-    actionIds: ['act-longbow-hunters-mark'],
+    actionIds: ['act-longbow'],
   },
 ];
 
@@ -975,7 +961,7 @@ export const SAMPLE_PCS: Combatant[] = [
     spellcastingAbility: 'wis',
     position: defaultPcPosition(1),
     speed: 30,
-    actionIds: ['act-hunters-mark', 'act-longbow-hunters-mark'],
+    actionIds: ['act-hunters-mark', 'act-longbow'],
     featureIds: ['feat-hunters-mark'],
     spellSlots: { 1: 3 },
     script: [
@@ -990,7 +976,7 @@ export const SAMPLE_PCS: Combatant[] = [
         priority: 2,
         label: 'Shoot the marked target or lowest-HP enemy',
         condition: { type: 'always' },
-        actionId: 'act-longbow-hunters-mark',
+        actionId: 'act-longbow',
         target: { strategy: 'lowestHpEnemy', excludeIncapacitated: true },
       },
     ],
@@ -1006,7 +992,7 @@ export const SAMPLE_PCS: Combatant[] = [
     proficiencyBonus: 2,
     position: defaultPcPosition(0),
     speed: 40,
-    actionIds: ['act-rage', 'act-greataxe-rage'],
+    actionIds: ['act-rage', 'act-greataxe'],
     featureIds: ['feat-rage-damage'],
     spellSlots: {},
     script: [
@@ -1021,7 +1007,7 @@ export const SAMPLE_PCS: Combatant[] = [
         priority: 2,
         label: 'Chop the nearest enemy',
         condition: { type: 'always' },
-        actionId: 'act-greataxe-rage',
+        actionId: 'act-greataxe',
         target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
       },
     ],
@@ -1037,7 +1023,7 @@ export const SAMPLE_PCS: Combatant[] = [
     proficiencyBonus: 2,
     position: defaultPcPosition(1),
     speed: 30,
-    actionIds: ['act-rogue-shortbow'],
+    actionIds: ['act-shortbow'],
     featureIds: ['feat-sneak-attack'],
     spellSlots: {},
     script: [
@@ -1045,7 +1031,7 @@ export const SAMPLE_PCS: Combatant[] = [
         priority: 1,
         label: 'Sneak-attack the nearest enemy',
         condition: { type: 'always' },
-        actionId: 'act-rogue-shortbow',
+        actionId: 'act-shortbow',
         target: { strategy: 'nearestEnemy', excludeIncapacitated: true },
       },
     ],
@@ -1114,15 +1100,15 @@ export const LEVEL_1_CLASS_PCS: Combatant[] = [
 ];
 
 export const LEVEL_3_CLASS_PCS: Combatant[] = [
-  makeLibraryPc({ className: 'Barbarian', subclass: 'Berserker', level: 3, featureIds: ['feat-rage-damage'], maxHp: 35, ac: 14, abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-rage', 'act-greataxe-rage'], primaryActionId: 'act-greataxe-rage' }),
+  makeLibraryPc({ className: 'Barbarian', subclass: 'Berserker', level: 3, featureIds: ['feat-rage-damage'], maxHp: 35, ac: 14, abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-rage', 'act-greataxe'], primaryActionId: 'act-greataxe' }),
   makeLibraryPc({ className: 'Bard', subclass: 'College of Lore', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 8, dex: 14, con: 14, int: 12, wis: 10, cha: 16 }, saveProficiencies: ['dex', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-dagger', 'act-thunderwave', 'act-shatter'], primaryActionId: 'act-shatter' }),
   makeLibraryPc({ className: 'Cleric', subclass: 'Life Domain', level: 3, maxHp: 24, ac: 18, abilityScores: { str: 14, dex: 10, con: 14, int: 10, wis: 16, cha: 12 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-mace', 'act-sacred-flame', 'act-cure-wounds', 'act-guiding-bolt'], primaryActionId: 'act-guiding-bolt' }),
   makeLibraryPc({ className: 'Druid', subclass: 'Circle of the Moon', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 8 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-quarterstaff', 'act-moonbeam', 'act-cure-wounds'], primaryActionId: 'act-moonbeam' }),
   makeLibraryPc({ className: 'Fighter', subclass: 'Battlemaster', additionalInfo: 'Sword and Board', level: 3, maxHp: 31, ac: 18, abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-longsword', 'act-heavy-crossbow'], primaryActionId: 'act-longsword' }),
   makeLibraryPc({ className: 'Monk', subclass: 'Way of the Open Hand', level: 3, maxHp: 24, ac: 15, abilityScores: { str: 12, dex: 16, con: 14, int: 10, wis: 14, cha: 8 }, saveProficiencies: ['str', 'dex'], actionIds: ['act-quarterstaff', 'act-dart'], primaryActionId: 'act-quarterstaff' }),
   makeLibraryPc({ className: 'Paladin', subclass: 'Oath of Devotion', level: 3, maxHp: 28, ac: 18, abilityScores: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 14 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 3 }, actionIds: ['act-longsword', 'act-javelin'], primaryActionId: 'act-longsword' }),
-  makeLibraryPc({ className: 'Ranger', subclass: 'Hunter', additionalInfo: 'Archer', level: 3, featureIds: ['feat-hunters-mark'], maxHp: 28, ac: 15, abilityScores: { str: 11, dex: 16, con: 14, int: 10, wis: 14, cha: 10 }, saveProficiencies: ['str', 'dex'], spellcastingAbility: 'wis', spellSlots: { 1: 3 }, actionIds: ['act-hunters-mark', 'act-longbow-hunters-mark'], primaryActionId: 'act-longbow-hunters-mark' }),
-  makeLibraryPc({ className: 'Rogue', subclass: 'Thief', additionalInfo: 'Archer', level: 3, featureIds: ['feat-sneak-attack'], maxHp: 22, ac: 15, abilityScores: { str: 10, dex: 16, con: 12, int: 12, wis: 13, cha: 14 }, saveProficiencies: ['dex', 'int'], actionIds: ['act-rogue-shortbow'], primaryActionId: 'act-rogue-shortbow' }),
+  makeLibraryPc({ className: 'Ranger', subclass: 'Hunter', additionalInfo: 'Archer', level: 3, featureIds: ['feat-hunters-mark'], maxHp: 28, ac: 15, abilityScores: { str: 11, dex: 16, con: 14, int: 10, wis: 14, cha: 10 }, saveProficiencies: ['str', 'dex'], spellcastingAbility: 'wis', spellSlots: { 1: 3 }, actionIds: ['act-hunters-mark', 'act-longbow'], primaryActionId: 'act-longbow' }),
+  makeLibraryPc({ className: 'Rogue', subclass: 'Thief', additionalInfo: 'Archer', level: 3, featureIds: ['feat-sneak-attack'], maxHp: 22, ac: 15, abilityScores: { str: 10, dex: 16, con: 12, int: 12, wis: 13, cha: 14 }, saveProficiencies: ['dex', 'int'], actionIds: ['act-shortbow'], primaryActionId: 'act-shortbow' }),
   makeLibraryPc({ className: 'Sorcerer', subclass: 'Draconic Bloodline', level: 3, maxHp: 20, ac: 12, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['con', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-scorching-ray', 'act-shatter'], primaryActionId: 'act-scorching-ray' }),
   makeLibraryPc({ className: 'Warlock', subclass: 'Fiend Patron', level: 3, maxHp: 24, ac: 13, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 2: 2 }, actionIds: ['act-fire-bolt', 'act-hellish-rebuke', 'act-shatter'], primaryActionId: 'act-shatter' }),
   makeLibraryPc({ className: 'Wizard', subclass: 'Evocation', level: 3, maxHp: 18, ac: 12, abilityScores: { str: 8, dex: 14, con: 13, int: 16, wis: 11, cha: 10 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'int', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-magic-missile', 'act-scorching-ray'], primaryActionId: 'act-scorching-ray' }),

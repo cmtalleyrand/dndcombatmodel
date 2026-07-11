@@ -52,7 +52,7 @@ interface Props {
   setScenario: (s: Scenario) => void;
 }
 
-const KINDS: ActionKind[] = ['attack', 'spell', 'ability', 'dodge', 'move'];
+const KINDS: ActionKind[] = ['attack', 'spell', 'ability', 'dodge', 'move', 'dash', 'disengage', 'help', 'hide', 'ready', 'search'];
 const DAMAGE_TYPES: DamageType[] = [
   'bludgeoning', 'piercing', 'slashing', 'fire', 'cold', 'lightning', 'acid',
   'poison', 'necrotic', 'radiant', 'force', 'psychic', 'thunder',
@@ -559,7 +559,7 @@ function ConditionEditor({
   onChange: (a: Action) => void;
 }) {
   const apps = action.applyConditions ?? [];
-  if (action.kind === 'dodge' || action.kind === 'move') return null;
+  if (['dodge', 'move', 'dash', 'disengage', 'help', 'hide', 'ready', 'search'].includes(action.kind)) return null;
 
   const setApps = (next: typeof apps) => onChange({ ...action, applyConditions: next.length ? next : undefined });
 

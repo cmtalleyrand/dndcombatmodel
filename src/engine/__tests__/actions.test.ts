@@ -45,6 +45,25 @@ describe('healing and resource consumption', () => {
   });
 });
 
+describe('basic utility actions', () => {
+  it('executes basic utility actions without damage resolution', () => {
+    const dash = fixtureAction({ id: 'dash', name: 'Dash', kind: 'dash', targets: 0, damage: undefined, damageType: undefined });
+    const help = fixtureAction({ id: 'help', name: 'Help', kind: 'help', targets: 1, damage: undefined, damageType: undefined });
+    const actor = fixtureCombatant('actor', 'pc', { position: 0, speed: 30 });
+    const target = fixtureCombatant('target', 'monster', { position: 60 });
+    const state = fixtureState([actor, target], [dash, help]);
+    const events: LogEvent[] = [];
+
+    performAction(state, new RNG(1), state.combatants[0], dash, [], events);
+    performAction(state, new RNG(1), state.combatants[0], help, [state.combatants[1]], events);
+
+    expect(state.combatants[0].position).toBeGreaterThan(0);
+    expect(state.combatants[1].hp).toBe(20);
+    expect(events.some((event) => event.actionId === 'dash' && event.message.includes('Dash'))).toBe(true);
+    expect(events.some((event) => event.actionId === 'help' && event.message.includes('Help'))).toBe(true);
+  });
+});
+
 describe('incapacitation and concentration effects', () => {
   it('applies an incapacitating condition on a failed save', () => {
     const sleep = fixtureAction({

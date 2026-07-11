@@ -344,6 +344,33 @@ export function performAction(
       reposition(state, actor, action.moveMode ?? 'advance', events);
       return;
     }
+    case 'dash': {
+      reposition(state, actor, action.moveMode ?? 'advance', events);
+      events.push({
+        round: state.round,
+        actorId: actor.base.id,
+        actorName: actor.base.name,
+        type: 'ability',
+        actionId: action.id,
+        message: `${actor.base.name} takes the Dash action.`,
+      });
+      return;
+    }
+    case 'disengage':
+    case 'help':
+    case 'hide':
+    case 'ready':
+    case 'search': {
+      events.push({
+        round: state.round,
+        actorId: actor.base.id,
+        actorName: actor.base.name,
+        type: 'ability',
+        actionId: action.id,
+        message: `${actor.base.name} takes the ${action.name} action.`,
+      });
+      return;
+    }
     case 'dodge': {
       // Dodge grants the dodging condition until the actor's next turn.
       actor.conditions.push({ kind: 'dodging', duration: { type: 'rounds', rounds: 1 } });

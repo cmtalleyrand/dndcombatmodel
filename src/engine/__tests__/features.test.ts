@@ -214,9 +214,9 @@ describe('composable attack features', () => {
 
 
   it("applies migrated SRD Sneak Attack, Rage, and Hunter's Mark through features", () => {
-    const rogueShot = SRD_ACTIONS.find((action) => action.id === 'act-rogue-shortbow')!;
-    const rageAttack = SRD_ACTIONS.find((action) => action.id === 'act-greataxe-rage')!;
-    const markShot = SRD_ACTIONS.find((action) => action.id === 'act-longbow-hunters-mark')!;
+    const rogueShot = SRD_ACTIONS.find((action) => action.id === 'act-shortbow')!;
+    const rageAttack = SRD_ACTIONS.find((action) => action.id === 'act-greataxe')!;
+    const markShot = SRD_ACTIONS.find((action) => action.id === 'act-longbow')!;
     const state = fixtureState(
       [
         fixtureCombatant('rogue', 'pc', { actionIds: [rogueShot.id], featureIds: ['feat-sneak-attack'], position: 0, abilityScores: { str: 10, dex: 20, con: 10, int: 10, wis: 10, cha: 10 } }),
