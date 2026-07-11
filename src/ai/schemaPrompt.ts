@@ -155,6 +155,21 @@ interface AIDraftResource { name: string; sourceName: string; max: number; }
 interface AIDraftStackableModifier { name: string; sourceName: string; timing: 'beforeAttackRoll'|'afterAttackRollBeforeHitResolution'|'onHit'; appliesToActionNames: string[]; toHit?: number; damage?: number; extraDamageDice?: string; extraDamageType?: string; resourceName?: string; spendTrigger?: 'always'|'onHit'|'missWithin'; missThreshold?: number; stackingBehavior: string; }
 interface AIDraftTriggeredEffect { name: string; sourceName: string; timing: 'precombat'|'startOfCombat'|'startOfTurn'|'onHit'|'afterMiss'|'actionEconomy'; appliesToActionNames?: string[]; resourceName?: string; spendTrigger?: 'always'|'onHit'|'missWithin'; extraDamageDice?: string; extraDamageType?: string; extraActionCount?: number; simulatorRepresentation: string; }
 interface AIDraftTacticalPolicy { actorName: string; sourceName?: string; policy: TacticalPolicy; }
+// TacticalPolicy has EXACTLY these optional fields — no others. Any other key (movementMode,
+// desiredRange, useFullMovement, oneArrowPerRound, ignoreLongRangeDisadvantage, maximumUseRange,
+// speedOverrideWhileEffectActive, ...) is INVALID and will be rejected. Express kiting/pursuit
+// through movementPolicy.kind; range-gating of maneuvers belongs in priorityScripts conditions
+// (nearestEnemyWithin/nearestEnemyBeyond), not here.
+interface TacticalPolicy {
+  // movement: 'retreatKite' backs away to keep preferredRange from the nearest threat (archer kiting);
+  // 'close' advances to melee; 'maintainRange' holds preferredRange; 'holdPosition' never moves.
+  movementPolicy?: { kind: 'maintainRange' | 'close' | 'retreatKite' | 'holdPosition'; preferredRange?: number; threatRange?: number };
+  baseActionSelector?: { kind: 'rulePriority' | 'actionId' | 'kind'; actionId?: string; actionKind?: string };
+  modifierPolicy?: { kind: 'always' | 'never' | 'minimumHitChance' | 'positiveExpectedValue'; featureIds?: string[]; minimumHitChance?: number };
+  targetPolicy?: { kind: 'ruleTarget' | 'namedPriority' | 'concentratingTarget' | 'lowAcTarget' | 'lowHpTarget' | 'nearestMeleeThreat'; namedTargets?: string[]; fallback?: string };
+  resourcePolicy?: { kind: 'conserve' | 'spendEarly' | 'spendIfChangesOutcome' | 'highValueTargets' };
+  extraActionPolicy?: { kind: 'conserve' | 'spendEarly' | 'spendIfChangesOutcome' | 'highValueTargets' };
+}
 
 interface AIDraftTargetPriority {
   name: string;

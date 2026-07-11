@@ -16,6 +16,8 @@ const ABILITY_SET = new Set<string>(ABILITIES);
 const DAMAGE_TYPE_SET = new Set<string>(DAMAGE_TYPES);
 const CONDITION_SET = new Set<string>(CONDITION_KINDS);
 const EFFECT_SCOPE_SET = new Set<string>(['self', 'target', 'allAllies', 'allEnemies']);
+const TACTICAL_POLICY_KEYS = new Set(['movementPolicy', 'baseActionSelector', 'modifierPolicy', 'targetPolicy', 'resourcePolicy', 'extraActionPolicy']);
+const MOVEMENT_POLICY_KINDS = new Set(['maintainRange', 'close', 'retreatKite', 'holdPosition']);
 
 function norm(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -279,6 +281,19 @@ export function validateDraft(draft: AIScenarioDraft): string[] {
 
   for (const policy of draft.tacticalPolicies ?? []) {
     if (!combatantNames.has(policy.actorName)) errors.push(`Tactical policy references unknown combatant: ${policy.actorName}`);
+    // The `policy` object must match the engine's TacticalPolicy shape. Anything else is silently
+    // dropped by the converter, so reject invented fields/kinds here with an actionable message.
+    const shape = (policy.policy ?? {}) as Record<string, unknown>;
+    const label = `Tactical policy for ${policy.actorName}${policy.sourceName ? ` (${policy.sourceName})` : ''}`;
+    for (const key of Object.keys(shape)) {
+      if (!TACTICAL_POLICY_KEYS.has(key)) {
+        errors.push(`${label} has an unsupported field "${key}"; allowed: ${[...TACTICAL_POLICY_KEYS].join(', ')}. Movement/kiting must use movementPolicy.kind.`);
+      }
+    }
+    const movement = shape.movementPolicy as { kind?: string } | undefined;
+    if (movement && !MOVEMENT_POLICY_KINDS.has(movement.kind ?? '')) {
+      errors.push(`${label} movementPolicy.kind "${movement.kind}" is invalid; use one of: ${[...MOVEMENT_POLICY_KINDS].join(', ')}.`);
+    }
   }
 
   const declaredFeatureSources = new Set((draft.featureDecompositions ?? []).map((feature) => norm(feature.sourceName)));
@@ -313,12 +328,19 @@ export function validateDraft(draft: AIScenarioDraft): string[] {
         errors.push(`Feature "${feature.sourceName}" has a limited resource cost but no resource pool or explicit use limit.`);
       }
     }
-    const movementText = `${feature.sourceName} ${feature.simulatorRepresentation} ${feature.knownApproximationOrUnsupported ?? ''}`;
-    if (/\b(speed|movement|move|range|kite|retreat|dash)\b/i.test(movementText)) {
+    // Only scan what the feature *does* (not its "unsupported" note), and don't treat "range"
+    // (a ranged-attack word, e.g. Sharpshooter's long range) as a movement signal.
+    const movementText = `${feature.sourceName} ${feature.simulatorRepresentation}`;
+    if (/\b(speed|kite|kiting|retreat|dash)\b/i.test(movementText)) {
       const hasPassiveSpeed = (draft.passiveTraits ?? []).some((trait) => featureMentioned(feature.sourceName, trait.sourceName) && (trait.speedBonus !== undefined || trait.speedOverride !== undefined));
-      const hasMovementPolicy = (draft.tacticalPolicies ?? []).some((policy) => featureMentioned(feature.sourceName, policy.sourceName) && !!policy.policy.movementPolicy);
-      if (!hasPassiveSpeed && !hasMovementPolicy) {
-        errors.push(`Movement-affecting feature "${feature.sourceName}" must affect speed or create a movement policy.`);
+      const hasMovementPolicy = (draft.tacticalPolicies ?? []).some((policy) => featureMentioned(feature.sourceName, policy.sourceName) && !!policy.policy?.movementPolicy);
+      // A timed effect that changes speed (Haste's speedOverride, Longstrider's speedDelta) counts too.
+      const hasEffectSpeed = draft.actions.some((action) =>
+        (action.effects ?? []).some((effect) => effect.modifier?.speedDelta !== undefined || effect.modifier?.speedOverride !== undefined)
+        && (featureMentioned(feature.sourceName, action.name) || (action.effects ?? []).some((effect) => featureMentioned(feature.sourceName, effect.label ?? ''))),
+      );
+      if (!hasPassiveSpeed && !hasMovementPolicy && !hasEffectSpeed) {
+        errors.push(`Movement-affecting feature "${feature.sourceName}" must affect speed (via a passive trait or a timed effect's speedDelta/speedOverride) or create a movementPolicy.`);
       }
     }
   }

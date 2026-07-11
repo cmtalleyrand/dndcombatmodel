@@ -192,4 +192,47 @@ describe('validateDraft stat-range enforcement', () => {
   it('accepts a normal stat block', () => {
     expect(validateDraft(baseDraft())).toEqual([]);
   });
+
+  it('rejects a tactical policy with invented fields (silently-dropped bug)', () => {
+    const draft = baseDraft({
+      tacticalPolicies: [
+        // The shape a model tends to hallucinate — none of these keys exist on TacticalPolicy.
+        { actorName: 'Goblin', sourceName: 'Sharpshooter', policy: { movementMode: 'retreat', desiredRange: 600, oneArrowPerRound: true } } as never,
+      ],
+    });
+    const errors = validateDraft(draft);
+    expect(errors.some((e) => /unsupported field "movementMode"/.test(e))).toBe(true);
+    expect(errors.some((e) => /unsupported field "desiredRange"/.test(e))).toBe(true);
+  });
+
+  it('rejects an invalid movementPolicy.kind but accepts a valid one', () => {
+    const bad = baseDraft({ tacticalPolicies: [{ actorName: 'Goblin', policy: { movementPolicy: { kind: 'runAway' } } } as never] });
+    expect(validateDraft(bad).some((e) => /movementPolicy.kind "runAway" is invalid/.test(e))).toBe(true);
+
+    const good = baseDraft({ tacticalPolicies: [{ actorName: 'Goblin', sourceName: 'Sharpshooter', policy: { movementPolicy: { kind: 'retreatKite', preferredRange: 600 } } }] });
+    expect(validateDraft(good)).toEqual([]);
+  });
+
+  it('does not false-positive the movement check on Sharpshooter or effect-based Haste', () => {
+    // Sharpshooter: text mentions "retreat"/long range, but a real movementPolicy satisfies the check.
+    const sharpshooter = baseDraft({
+      enemies: [{ ...baseDraft().enemies[0], declaredFeatureNames: ['Sharpshooter'] }],
+      tacticalPolicies: [{ actorName: 'Goblin', sourceName: 'Sharpshooter', policy: { movementPolicy: { kind: 'retreatKite', preferredRange: 80 } } }],
+      featureDecompositions: [{ sourceName: 'Sharpshooter', category: 'tacticalPolicy', simulatorRepresentation: 'kites at long range then retreats to preserve distance', triggerTiming: 'passive', resourceCost: 'none', stackingBehavior: 'n/a' }],
+      assumptionsRequiringApproval: ['Sharpshooter modeled as a kiting policy.'],
+    });
+    expect(validateDraft(sharpshooter).some((e) => /Movement-affecting feature "Sharpshooter"/.test(e))).toBe(false);
+
+    // Haste: speed handled by the action effect's speedOverride, not a passive trait / policy.
+    const haste = baseDraft({
+      actions: [
+        baseDraft().actions[0],
+        { id: '', name: 'Haste', kind: 'spell', targets: 1, concentration: true, effects: [{ label: 'Haste', target: 'target', modifier: { speedOverride: 60, ac: 2 }, duration: { type: 'concentration', sourceId: '' } }] },
+      ],
+      pcs: [{ ...baseDraft().pcs[0], actionNames: ['Swing', 'Haste'], declaredFeatureNames: ['Haste'] }],
+      featureDecompositions: [{ sourceName: 'Haste', category: 'baseAction', simulatorRepresentation: 'doubles the target speed and adds AC', triggerTiming: 'actionEconomy', resourceCost: 'a level 3 slot', stackingBehavior: 'n/a' }],
+      assumptionsRequiringApproval: ['Haste cast on the fastest ally.'],
+    });
+    expect(validateDraft(haste).some((e) => /Movement-affecting feature "Haste"/.test(e))).toBe(false);
+  });
 });
