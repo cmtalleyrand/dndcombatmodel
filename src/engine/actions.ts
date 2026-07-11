@@ -386,13 +386,29 @@ function combatantFeatures(state: CombatState, actor: CombatantState): Feature[]
   return [...(actor.base.features ?? []), ...(actor.base.featureIds ?? []).map((id) => state.featuresById[id]).filter(Boolean)];
 }
 
-function legacyActionFeatures(action: Action): Feature[] {
+
+function backCompatActionFeatures(action: Action): Feature[] {
   const features: Feature[] = [];
   for (let i = 0; i < (action.extraDamage?.length ?? 0); i++) {
-    features.push({ id: `${action.id}:legacyExtraDamage:${i}`, name: action.extraDamage![i].label ?? 'Extra Damage', timing: 'onHit', extraDamage: [action.extraDamage![i]] });
+    features.push({ id: `${action.id}:extraDamage:${i}`, name: action.extraDamage![i].label ?? 'Extra Damage', timing: 'onHit', extraDamage: [action.extraDamage![i]] });
   }
   if (action.applyConditions?.length) {
-    features.push({ id: `${action.id}:legacyConditions`, name: 'Condition effect', timing: 'onHit', applyConditions: action.applyConditions });
+    features.push({ id: `${action.id}:conditions`, name: 'Condition effect', timing: 'onHit', applyConditions: action.applyConditions });
+  }
+  for (let i = 0; i < (action.riders?.length ?? 0); i++) {
+    const rider = action.riders![i];
+    features.push({
+      id: `${action.id}:rider:${i}`,
+      name: rider.label ?? 'rider',
+      timing: 'onHit',
+      condition: {
+        trigger: rider.trigger,
+        condition: rider.condition,
+        meleeOnly: rider.meleeOnly,
+      },
+      extraDamage: [{ dice: rider.bonusDice, flat: rider.bonusFlat, type: action.damageType ?? 'bludgeoning', label: rider.label }],
+      oncePerTurn: rider.oncePerTurn,
+    });
   }
   return features;
 }
@@ -431,7 +447,13 @@ function applicableFeatures(
   adv: Advantage = 'normal',
   gap = 0,
 ): Feature[] {
-  return [...combatantFeatures(state, actor), ...legacyActionFeatures(action)].filter(
+  const featuresById = new Map<string, Feature>();
+  for (const feature of combatantFeatures(state, actor)) featuresById.set(feature.id, feature);
+  for (const feature of Object.values(state.featuresById)) {
+    if (feature.actionIds?.includes(action.id)) featuresById.set(feature.id, feature);
+  }
+  for (const feature of backCompatActionFeatures(action)) featuresById.set(feature.id, feature);
+  return [...featuresById.values()].filter(
     (f) => f.timing === timing && (!f.actionIds || f.actionIds.includes(action.id)) && featureConditionApplies(state, actor, f, target, adv, gap),
   );
 }
@@ -459,83 +481,24 @@ function allyAdjacentToTarget(state: CombatState, actor: CombatantState, target:
 }
 
 /**
- * Apply conditional damage riders on a hit (Sneak Attack, Rage, Hunter's Mark, etc.).
- * Returns the total bonus damage and logs each rider that fires.
- */
-function applyRiders(
-  state: CombatState,
-  rng: RNG,
-  actor: CombatantState,
-  target: CombatantState,
-  action: Action,
-  adv: Advantage,
-  gap: number,
-  crit: boolean,
-  events: LogEvent[],
-): number {
-  if (!action.riders?.length) return 0;
-  let total = 0;
-  for (let i = 0; i < action.riders.length; i++) {
-    const r = action.riders[i];
-    const key = `${action.id}#${i}`;
-    if (r.meleeOnly && gap > 0) continue;
-    if (r.oncePerTurn && actor.riderUsedThisTurn.has(key)) continue;
-
-    let ok = false;
-    switch (r.trigger) {
-      case 'always':
-        ok = true;
-        break;
-      case 'hasAdvantage':
-        ok = adv === 'advantage';
-        break;
-      case 'advantageOrAllyAdjacent':
-        ok = adv === 'advantage' || allyAdjacentToTarget(state, actor, target);
-        break;
-      case 'targetHasCondition':
-        ok = !!r.condition && target.conditions.some((c) => c.kind === r.condition);
-        break;
-      case 'selfHasCondition':
-        ok = !!r.condition && actor.conditions.some((c) => c.kind === r.condition);
-        break;
-    }
-    if (!ok) continue;
-
-    let bonus = r.bonusFlat ?? 0;
-    if (r.bonusDice) bonus += rollDice(rng, crit ? critDouble(r.bonusDice) : r.bonusDice).total;
-    if (bonus <= 0) continue;
-    total += bonus;
-    if (r.oncePerTurn) actor.riderUsedThisTurn.add(key);
-    events.push({
-      round: state.round,
-      actorId: actor.base.id,
-      actorName: actor.base.name,
-      type: 'attack',
-      actionId: action.id,
-      targetId: target.base.id,
-      targetName: target.base.name,
-      message: `  ↳ ${r.label ?? 'rider'}: +${bonus} damage.`,
-    });
-  }
-  return total;
-}
-
-/**
  * Resolve an action's extra typed-damage packets against one target (each vs its own
  * resistances). `scale` lets save-for-half effects halve (0.5) or negate (0) the extras.
  */
-function applyExtraDamage(
+function applyFeatureExtraDamage(
   state: CombatState,
   rng: RNG,
   actor: CombatantState,
   target: CombatantState,
   action: Action,
+  features: Feature[],
   crit: boolean,
   events: LogEvent[],
   scale = 1,
 ): void {
-  if (!action.extraDamage?.length || scale <= 0) return;
-  for (const extra of action.extraDamage) {
+  if (scale <= 0) return;
+  for (const feature of features) {
+    if (!feature.extraDamage?.length) continue;
+    for (const extra of feature.extraDamage) {
     if (!isAlive(target)) break;
     let dmg = extra.flat ?? 0;
     if (extra.dice) dmg += rollDice(rng, crit ? critDouble(extra.dice) : extra.dice).total;
@@ -551,8 +514,9 @@ function applyExtraDamage(
       targetId: target.base.id,
       targetName: target.base.name,
       damage: dmg,
-      message: `  ↳ ${extra.label ?? extra.type}: +${dmg} ${extra.type} damage.`,
+      message: `  ↳ ${feature.name}: +${dmg} ${extra.type} damage.`,
     });
+    }
   }
 }
 
@@ -671,14 +635,9 @@ function resolveAttack(
 
       const isCritHit = isMeleeAutoCrit(target, gap) || roll.isCrit;
       let dmg = rollDamageTotal(rng, profile.damageDice, profile.damageFlat + damageModifier, isCritHit);
-      // Conditional feature riders (Sneak Attack, Rage, Hunter's Mark…). Use isCritHit so
-      // rider dice double on a melee auto-crit (vs paralyzed/unconscious), matching the
-      // weapon dice above — not just on a natural 20.
-      const riderBonus = applyRiders(state, rng, actor, target, action, adv, gap, isCritHit, events);
-      dmg += riderBonus;
       const onHitFeatures = applicableFeatures(state, actor, action, 'onHit', target, adv, gap).filter((f) => canSpendFeature(actor, f));
       for (const feature of onHitFeatures) {
-        if (feature.spend?.trigger === 'onHit' || feature.spend?.trigger === 'always') spendFeature(actor, feature);
+        if (feature.oncePerTurn || feature.spend?.trigger === 'onHit' || feature.spend?.trigger === 'always') spendFeature(actor, feature);
       }
       applyDamage(state, rng, actor, target, dmg, events, profile.damageType, isCritHit);
       for (const feature of onHitFeatures) {
@@ -837,9 +796,13 @@ function resolveSpellOrAbility(
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
       const extraScale = saved ? (action.save.onSuccess === 'half' ? 0.5 : 0) : 1;
-      applyExtraDamage(state, rng, actor, target, action, false, events, extraScale);
-      if (!saved && action.applyConditions?.length) {
-        applyConditionsTo(target, actor, action.applyConditions, state, events);
+      const onHitFeatures = !saved ? applicableFeatures(state, actor, action, 'onHit', target).filter((f) => canSpendFeature(actor, f)) : [];
+      for (const feature of onHitFeatures) {
+        if (feature.oncePerTurn || feature.spend?.trigger === 'onHit' || feature.spend?.trigger === 'always') spendFeature(actor, feature);
+      }
+      applyFeatureExtraDamage(state, rng, actor, target, action, onHitFeatures, false, events, extraScale);
+      for (const feature of onHitFeatures) {
+        if (feature.applyConditions?.length) applyConditionsTo(target, actor, feature.applyConditions, state, events);
       }
       events.push({
         round: state.round,
@@ -880,9 +843,13 @@ function resolveSpellOrAbility(
           isMeleeAutoCrit(target, distance(actor, target)) || roll.isCrit,
         );
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType, roll.isCrit);
-        applyExtraDamage(state, rng, actor, target, action, roll.isCrit, events);
-        if (action.applyConditions?.length) {
-          applyConditionsTo(target, actor, action.applyConditions, state, events);
+        const onHitFeatures = applicableFeatures(state, actor, action, 'onHit', target, adv, distance(actor, target)).filter((f) => canSpendFeature(actor, f));
+        for (const feature of onHitFeatures) {
+          if (feature.oncePerTurn || feature.spend?.trigger === 'onHit' || feature.spend?.trigger === 'always') spendFeature(actor, feature);
+        }
+        applyFeatureExtraDamage(state, rng, actor, target, action, onHitFeatures, roll.isCrit, events);
+        for (const feature of onHitFeatures) {
+          if (feature.applyConditions?.length) applyConditionsTo(target, actor, feature.applyConditions, state, events);
         }
       }
       events.push({
@@ -905,9 +872,13 @@ function resolveSpellOrAbility(
         dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, false);
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
-      applyExtraDamage(state, rng, actor, target, action, false, events);
-      if (action.applyConditions?.length) {
-        applyConditionsTo(target, actor, action.applyConditions, state, events);
+      const onHitFeatures = applicableFeatures(state, actor, action, 'onHit', target).filter((f) => canSpendFeature(actor, f));
+      for (const feature of onHitFeatures) {
+        if (feature.oncePerTurn || feature.spend?.trigger === 'onHit' || feature.spend?.trigger === 'always') spendFeature(actor, feature);
+      }
+      applyFeatureExtraDamage(state, rng, actor, target, action, onHitFeatures, false, events);
+      for (const feature of onHitFeatures) {
+        if (feature.applyConditions?.length) applyConditionsTo(target, actor, feature.applyConditions, state, events);
       }
       events.push({
         round: state.round,

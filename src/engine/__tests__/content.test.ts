@@ -3,7 +3,7 @@ import { performAction } from '../actions';
 import { effectiveRange } from '../movement';
 import { RNG } from '../dice';
 import { fixtureAction, fixtureCombatant, fixtureState } from '../../test/fixtures';
-import { SRD_ACTIONS } from '../../data/srd';
+import { SRD_ACTIONS, SRD_FEATURES } from '../../data/srd';
 import { SRD_WEAPONS } from '../../data/weapons';
 import type { Action } from '../types';
 import type { LogEvent } from '../log';
@@ -27,7 +27,7 @@ describe('content fixes', () => {
   it('Ice Storm splits bludgeoning and cold and parses cleanly', () => {
     const ice = SRD_ACTIONS.find((a) => a.id === 'act-ice-storm')!;
     expect(ice.damage).toBe('2d8');
-    expect(ice.extraDamage?.[0]).toMatchObject({ type: 'cold' });
+    expect(SRD_FEATURES.find((feature) => feature.id === 'feat-ice-storm-cold')?.extraDamage?.[0]).toMatchObject({ type: 'cold' });
   });
 
   it('the Ogre greatclub hits for 2d8+4', () => {

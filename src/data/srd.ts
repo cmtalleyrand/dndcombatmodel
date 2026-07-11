@@ -35,7 +35,6 @@ function weaponAttack(id: string, name: string, weaponId: string, overrides: Par
     kind: 'attack',
     targets: 1,
     weaponId,
-    attackCount: 1,
     ...overrides,
   };
 }
@@ -72,7 +71,7 @@ const WEAPON_ATTACK_ACTIONS: Action[] = [
   weaponAttack('act-longsword', 'Longsword', 'wpn-longsword'),
   weaponAttack('act-longsword-versatile', 'Longsword (Two-Handed)', 'wpn-longsword', { useVersatile: true }),
   weaponAttack('act-longsword-2x', 'Longsword (Extra Attack)', 'wpn-longsword', {
-    attackCount: 2,
+    sequence: ['act-longsword', 'act-longsword'],
     note: 'Two longsword attacks against one target (Extra Attack, a level-5 martial feature).',
   }),
   weaponAttack('act-maul', 'Maul', 'wpn-maul'),
@@ -96,7 +95,7 @@ const WEAPON_ATTACK_ACTIONS: Action[] = [
   weaponAttack('act-bite', 'Bite', 'wpn-bite'),
   weaponAttack('act-claw', 'Claw', 'wpn-claw'),
   weaponAttack('act-claw-2x', 'Claw (Multiattack)', 'wpn-claw', {
-    attackCount: 2,
+    sequence: ['act-claw', 'act-claw'],
     note: 'Two claw attacks against one target.',
   }),
 ];
@@ -286,7 +285,6 @@ const SPELL_AND_ABILITY_ACTIONS: Action[] = [
     spellLevel: 2,
     range: 30,
     save: { ability: 'con', onSuccess: 'none' },
-    applyConditions: [{ kind: 'blinded', duration: { type: 'rounds', rounds: 10 } }],
     note: 'Applies blinded on a failed Con save (abstracted as a 10-round duration).',
   },
   {
@@ -298,7 +296,6 @@ const SPELL_AND_ABILITY_ACTIONS: Action[] = [
     range: 60,
     concentration: true,
     save: { ability: 'wis', onSuccess: 'none' },
-    applyConditions: [{ kind: 'paralyzed', duration: { type: 'concentration', sourceId: '' } }],
   },
   {
     id: 'act-shatter',
@@ -348,7 +345,6 @@ const SPELL_AND_ABILITY_ACTIONS: Action[] = [
     aoeRadius: 10,
     concentration: true,
     save: { ability: 'dex', onSuccess: 'none' },
-    applyConditions: [{ kind: 'restrained', duration: { type: 'concentration', sourceId: '' } }],
   },
   {
     id: 'act-lightning-bolt',
@@ -385,7 +381,6 @@ const SPELL_AND_ABILITY_ACTIONS: Action[] = [
     aoeRadius: 20,
     damage: '2d8',
     damageType: 'bludgeoning',
-    extraDamage: [{ dice: '4d6', type: 'cold', label: 'cold' }],
     save: { ability: 'dex', onSuccess: 'half' },
     note: 'Bludgeoning (2d8) + cold (4d6); Dex save halves both.',
   },
@@ -437,7 +432,6 @@ export const SRD_ACTIONS: Action[] = [
     targets: 3,
     spellLevel: 1,
     concentration: true,
-    applyConditions: [{ kind: 'blessed', duration: { type: 'concentration', sourceId: '' } }],
     note: 'Up to 3 allies gain +1d4 to attacks and saves while you concentrate.',
   },
   {
@@ -448,7 +442,6 @@ export const SRD_ACTIONS: Action[] = [
     spellLevel: 1,
     range: 90,
     save: { ability: 'wis', onSuccess: 'none' }, // DC derived from the caster
-    applyConditions: [{ kind: 'asleep', duration: { type: 'rounds', rounds: 10 } }],
     note: 'Targets fall asleep on a failed save (abstracted; wakes when damaged).',
   },
   {
@@ -481,7 +474,6 @@ export const SRD_ACTIONS: Action[] = [
     kind: 'attack',
     targets: 1,
     weaponId: 'wpn-shortbow',
-    attackCount: 1,
     note: '+2d6 once per turn when you have advantage or an ally is adjacent to the target.',
   },
   {
@@ -490,7 +482,6 @@ export const SRD_ACTIONS: Action[] = [
     kind: 'attack',
     targets: 1,
     weaponId: 'wpn-greataxe',
-    attackCount: 1,
     note: '+2 damage while raging.',
   },
   {
@@ -499,7 +490,6 @@ export const SRD_ACTIONS: Action[] = [
     kind: 'attack',
     targets: 1,
     weaponId: 'wpn-longbow',
-    attackCount: 1,
     note: '+1d6 when the target is marked.',
   },
   {
@@ -508,7 +498,6 @@ export const SRD_ACTIONS: Action[] = [
     kind: 'ability',
     targets: 1, // self
     uses: 3,
-    applyConditions: [{ kind: 'raging', duration: { type: 'rounds', rounds: 10 } }],
     note: 'Self-buff: physical resistance + bonus melee damage while raging (pair with a Rage rider on a melee attack).',
   },
   {
@@ -519,7 +508,6 @@ export const SRD_ACTIONS: Action[] = [
     spellLevel: 1,
     range: 90,
     concentration: true,
-    applyConditions: [{ kind: 'marked', duration: { type: 'concentration', sourceId: '' } }],
     note: 'Marks a target; attacks against it deal bonus dice (pair with a marked-target rider).',
   },
   {
@@ -547,27 +535,109 @@ export const SRD_ACTIONS: Action[] = [
     note: 'SRD Ogre greatclub: +6 to hit, 2d8+4 bludgeoning.',
   },
   {
+    id: 'act-ghoul-claw-single',
+    name: 'Ghoul Claw',
+    kind: 'attack',
+    targets: 1,
+    attackBonus: 4,
+    damage: '2d4+2',
+    damageType: 'slashing',
+    note: 'Single ghoul claw attack; paralysis is supplied by feat-ghoul-claws-paralysis.',
+  },
+  {
     id: 'act-ghoul-claws',
     name: 'Ghoul Claws',
     kind: 'attack',
     targets: 1,
     attackBonus: 4,
-    attackCount: 2,
+    sequence: ['act-ghoul-claw-single', 'act-ghoul-claw-single'],
     damage: '2d4+2',
     damageType: 'slashing',
-    applyConditions: [{ kind: 'paralyzed', duration: { type: 'saveEnds', ability: 'con', dc: 10 } }],
     note: 'On a hit the target is paralyzed (DC 10 Con save ends at end of each of its turns).',
   },
 ];
 
 export const SRD_FEATURES: Feature[] = [
+
+  {
+    id: 'feat-blindness-deafness-blinded',
+    name: 'Blindness/Deafness: Blinded',
+    category: 'spellEffect',
+    timing: 'onHit',
+    applyConditions : [{ kind: 'blinded', duration: { type: 'rounds', rounds: 10 } }],
+    actionIds: ['act-blindness-deafness'],
+  },
+  {
+    id: 'feat-hold-person-paralysis',
+    name: 'Hold Person: Paralyzed',
+    category: 'spellEffect',
+    timing: 'onHit',
+    applyConditions : [{ kind: 'paralyzed', duration: { type: 'concentration', sourceId: '' } }],
+    actionIds: ['act-hold-person'],
+  },
+  {
+    id: 'feat-web-restrained',
+    name: 'Web: Restrained',
+    category: 'spellEffect',
+    timing: 'onHit',
+    applyConditions : [{ kind: 'restrained', duration: { type: 'concentration', sourceId: '' } }],
+    actionIds: ['act-web'],
+  },
+  {
+    id: 'feat-ice-storm-cold',
+    name: 'Ice Storm: Cold Damage',
+    category: 'spellEffect',
+    timing: 'onHit',
+    extraDamage : [{ dice: '4d6', type: 'cold', label: 'cold' }],
+    actionIds: ['act-ice-storm'],
+  },
+  {
+    id: 'feat-bless-condition',
+    name: 'Bless: Blessed',
+    category: 'spellEffect',
+    timing: 'onHit',
+    applyConditions : [{ kind: 'blessed', duration: { type: 'concentration', sourceId: '' } }],
+    actionIds: ['act-bless'],
+  },
+  {
+    id: 'feat-sleep-asleep',
+    name: 'Sleep: Asleep',
+    category: 'spellEffect',
+    timing: 'onHit',
+    applyConditions : [{ kind: 'asleep', duration: { type: 'rounds', rounds: 10 } }],
+    actionIds: ['act-sleep'],
+  },
+  {
+    id: 'feat-rage-condition',
+    name: 'Rage: Raging',
+    category: 'classFeature',
+    timing: 'onHit',
+    applyConditions : [{ kind: 'raging', duration: { type: 'rounds', rounds: 10 } }],
+    actionIds: ['act-rage'],
+  },
+  {
+    id: 'feat-hunters-mark-condition',
+    name: "Hunter's Mark: Marked",
+    category: 'spellEffect',
+    timing: 'onHit',
+    applyConditions : [{ kind: 'marked', duration: { type: 'concentration', sourceId: '' } }],
+    actionIds: ['act-hunters-mark'],
+  },
+  {
+    id: 'feat-ghoul-claws-paralysis',
+    name: 'Ghoul Claws: Paralysis',
+    category: 'monsterTrait',
+    timing: 'onHit',
+    applyConditions : [{ kind: 'paralyzed', duration: { type: 'saveEnds', ability: 'con', dc: 10 } }],
+    actionIds: ['act-ghoul-claw-single'],
+  },
   {
     id: 'feat-sneak-attack',
     name: 'Sneak Attack',
     category: 'classFeature',
     timing: 'onHit',
     condition: { trigger: 'advantageOrAllyAdjacent' },
-    extraDamage: [{ dice: '2d6', type: 'piercing', label: 'Sneak Attack' }],
+    extraDamage : [{ dice: '2d6', type: 'piercing', label: 'Sneak Attack' }],
     actionIds: ['act-rogue-shortbow'],
     oncePerTurn: true,
   },
@@ -577,7 +647,7 @@ export const SRD_FEATURES: Feature[] = [
     category: 'classFeature',
     timing: 'onHit',
     condition: { trigger: 'selfHasCondition', condition: 'raging', meleeOnly: true },
-    extraDamage: [{ flat: 2, type: 'slashing', label: 'Rage Damage' }],
+    extraDamage : [{ flat: 2, type: 'slashing', label: 'Rage Damage' }],
     actionIds: ['act-greataxe-rage'],
   },
   {
@@ -586,7 +656,7 @@ export const SRD_FEATURES: Feature[] = [
     category: 'spellEffect',
     timing: 'onHit',
     condition: { trigger: 'targetHasCondition', condition: 'marked' },
-    extraDamage: [{ dice: '1d6', type: 'piercing', label: "Hunter's Mark" }],
+    extraDamage : [{ dice: '1d6', type: 'piercing', label: "Hunter's Mark" }],
     actionIds: ['act-longbow-hunters-mark'],
   },
 ];
@@ -966,7 +1036,7 @@ function makeLibraryPc(spec: LibraryPcSpec): Combatant {
     speed: spec.className === 'Monk' || spec.className === 'Barbarian' ? 40 : 30,
     actionIds: spec.actionIds,
     spellSlots: spec.spellSlots ?? {},
-    featureIds: spec.featureIds,
+    featureIds: [...(spec.featureIds ?? []), ...['feat-blindness-deafness-blinded', 'feat-hold-person-paralysis', 'feat-web-restrained', 'feat-ice-storm-cold', 'feat-bless-condition', 'feat-sleep-asleep', 'feat-rage-condition', 'feat-hunters-mark-condition', 'feat-ghoul-claws-paralysis']],
     script: [
       {
         priority: 1,
@@ -1026,6 +1096,7 @@ export function makeGoblin(id: string, name: string, position = defaultMonsterPo
     position,
     speed: 30,
     actionIds: ['act-scimitar'],
+    featureIds: ['feat-blindness-deafness-blinded', 'feat-hold-person-paralysis', 'feat-web-restrained', 'feat-ice-storm-cold', 'feat-bless-condition', 'feat-sleep-asleep', 'feat-rage-condition', 'feat-hunters-mark-condition', 'feat-ghoul-claws-paralysis'],
     spellSlots: {},
     script: [
       {
@@ -1052,6 +1123,7 @@ export function makeOrc(id: string, name: string, position = defaultMonsterPosit
     position,
     speed: 30,
     actionIds: ['act-longsword'],
+    featureIds: ['feat-blindness-deafness-blinded', 'feat-hold-person-paralysis', 'feat-web-restrained', 'feat-ice-storm-cold', 'feat-bless-condition', 'feat-sleep-asleep', 'feat-rage-condition', 'feat-hunters-mark-condition', 'feat-ghoul-claws-paralysis'],
     spellSlots: {},
     script: [
       {
@@ -1082,6 +1154,7 @@ export function makeSkeleton(id: string, name: string, position = defaultMonster
     immunities: ['poison'],
     conditionImmunities: ['poisoned'],
     actionIds: ['act-shortbow', 'act-shortsword'],
+    featureIds: ['feat-blindness-deafness-blinded', 'feat-hold-person-paralysis', 'feat-web-restrained', 'feat-ice-storm-cold', 'feat-bless-condition', 'feat-sleep-asleep', 'feat-rage-condition', 'feat-hunters-mark-condition', 'feat-ghoul-claws-paralysis'],
     spellSlots: {},
     script: [
       {
@@ -1108,6 +1181,7 @@ export function makeWolf(id: string, name: string, position = defaultMonsterPosi
     position,
     speed: 40,
     actionIds: ['act-bite'],
+    featureIds: ['feat-blindness-deafness-blinded', 'feat-hold-person-paralysis', 'feat-web-restrained', 'feat-ice-storm-cold', 'feat-bless-condition', 'feat-sleep-asleep', 'feat-rage-condition', 'feat-hunters-mark-condition', 'feat-ghoul-claws-paralysis'],
     spellSlots: {},
     script: [
       {
@@ -1134,6 +1208,7 @@ export function makeOgre(id: string, name: string, position = defaultMonsterPosi
     position,
     speed: 40,
     actionIds: ['act-ogre-greatclub', 'act-javelin'],
+    featureIds: ['feat-blindness-deafness-blinded', 'feat-hold-person-paralysis', 'feat-web-restrained', 'feat-ice-storm-cold', 'feat-bless-condition', 'feat-sleep-asleep', 'feat-rage-condition', 'feat-hunters-mark-condition', 'feat-ghoul-claws-paralysis'],
     spellSlots: {},
     script: [
       {
@@ -1166,6 +1241,7 @@ type LibraryMonsterSpec = {
   immunities?: Combatant['immunities'];
   vulnerabilities?: Combatant['vulnerabilities'];
   conditionImmunities?: Combatant['conditionImmunities'];
+  featureIds?: string[];
 };
 
 function makeLibraryMonster(spec: LibraryMonsterSpec): Combatant {
@@ -1187,6 +1263,7 @@ function makeLibraryMonster(spec: LibraryMonsterSpec): Combatant {
     immunities: spec.immunities,
     vulnerabilities: spec.vulnerabilities,
     conditionImmunities: spec.conditionImmunities,
+    featureIds: [...(spec.featureIds ?? []), ...['feat-blindness-deafness-blinded', 'feat-hold-person-paralysis', 'feat-web-restrained', 'feat-ice-storm-cold', 'feat-bless-condition', 'feat-sleep-asleep', 'feat-rage-condition', 'feat-hunters-mark-condition', 'feat-ghoul-claws-paralysis']],
     script: [
       {
         priority: 1,
