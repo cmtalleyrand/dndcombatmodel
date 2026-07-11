@@ -46,9 +46,7 @@ need closing to support §2 fully:
    is discarded. Widen the filter to every timing the engine now supports and surface any
    effect it can't place instead of dropping it silently.
 
-Not blocking §2, worth doing for defensive/utility content: extend `AttackModifierEffect`
-beyond `toHit`/`damage` (advantage, save-DC, AC) and add a short/long-rest resource-refresh
-model for multi-encounter days.
+To-do: extend `AttackModifierEffect` beyond `toHit`/`damage` (advantage, save-DC, AC).
 
 ---
 
@@ -94,13 +92,6 @@ all of them and correct every value that differs from 2024.
   duration/concentration to the 2024 form.
 - **All 28 monsters**: fix HP, AC, attack bonuses/damage, multiattack, and ability modifiers
   to the 2024 Monster Manual stat block.
-- **Weapons** are already 2024; correct any mastery assignment that is wrong.
-
-Update `src/data/__tests__/srd.test.ts` to assert the 2024 values as you go. Declare
-"**Rules edition: D&D 2024**" in `README.md`, `CLAUDE.md`, and in-app.
-
-**Done means:** every spell and every monster matches its 2024 stat block and the tests assert
-those values. Nothing partial.
 
 ---
 
