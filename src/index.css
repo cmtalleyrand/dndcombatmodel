@@ -1350,14 +1350,30 @@ td.num, th.num {
 *::-webkit-scrollbar-thumb:hover { background: var(--panel-3); background-clip: padding-box; }
 
 /* ── Responsive ─────────────────────────────────────────── */
+/* The per-round damage chart can exceed the viewport at many rounds — let it scroll
+   inside its panel rather than pushing the page wide. */
+.dmg-chart { overflow-x: auto; }
+
 @media (max-width: 720px) {
   .app { padding: 1rem 0.85rem 3rem; }
   .grid-2 { grid-template-columns: 1fr; }
   .ability-grid { grid-template-columns: repeat(3, 1fr); }
   header.app-header h1 { font-size: 1.25rem; }
+  header.app-header { padding: 1rem; }
   .dmg-name { width: 5rem; }
   .card-grid { grid-template-columns: 1fr; }
   .menu-panel-right, .info-popover { right: 0; left: auto; width: min(300px, calc(100vw - 2rem)); }
+
+  /* Tabs: tighter so all seven fit the scroll strip without huge horizontal drag. */
+  .tabs .tab { padding: 0.5rem 0.6rem; font-size: 0.85rem; }
+
+  /* Rule editor: stack each control full width instead of a cramped horizontal wall. */
+  .rule label { width: 100%; }
+  .rule select, .rule .num, .rule input { width: 100%; box-sizing: border-box; }
+
+  /* Replay: let the transport row wrap and keep the dialog readable. */
+  .replay-controls { flex-wrap: wrap; row-gap: 0.4rem; }
+  .dialog { padding: 1rem; }
 }
 
 /* --- Wave 4: run progress, stale banner, run history --- */

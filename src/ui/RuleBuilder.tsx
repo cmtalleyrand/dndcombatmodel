@@ -28,6 +28,15 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
 
   const renumber = (list: Rule[]): Rule[] => list.map((r, i) => ({ ...r, priority: i + 1 }));
 
+  // Collapsed rules show only their one-line sentence, so a long script isn't a wall of selects.
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const toggleCollapsed = (idx: number) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+
   const setRule = (idx: number, patch: Partial<Rule>) => {
     const next = rules.map((r, i) => (i === idx ? { ...r, ...patch } : r));
     onChange(renumber(next));
@@ -85,6 +94,7 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
         const actionName = scenario.actions.find((a) => a.id === rule.actionId)?.name ?? '(no action)';
         // Any earlier unconditional rule makes this one unreachable ("first match wins").
         const deadAfter = rules.slice(0, idx).some((r) => r.condition.type === 'always');
+        const isCollapsed = collapsed.has(idx);
         return (
           <div className="rule" key={idx}>
             <div className="row spread">
@@ -93,6 +103,7 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
                 {rule.label && <span className="muted">{rule.label}</span>}
               </div>
               <div className="row">
+                <button className="ghost mini" onClick={() => toggleCollapsed(idx)} aria-expanded={!isCollapsed} aria-label={isCollapsed ? 'Expand rule' : 'Collapse rule'} title={isCollapsed ? 'Expand' : 'Collapse'}>{isCollapsed ? '▸' : '▾'}</button>
                 <button className="ghost mini" onClick={() => move(idx, -1)} disabled={idx === 0} aria-label="Move rule up" title="Move up">↑</button>
                 <button className="ghost mini" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1} aria-label="Move rule down" title="Move down">↓</button>
                 <button className="secondary mini" onClick={() => duplicate(idx)} aria-label="Duplicate rule">⧉ Duplicate</button>
@@ -100,7 +111,7 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
               </div>
             </div>
 
-            <div className="rule-sentence">
+            <div className="rule-sentence" onClick={() => toggleCollapsed(idx)} style={{ cursor: 'pointer' }} title={isCollapsed ? 'Click to edit' : 'Click to collapse'}>
               IF <strong>{describeCondition(rule.condition)}</strong> THEN <strong>{actionName}</strong> targeting <strong>{describeTarget(rule.target)}</strong>
             </div>
             {deadAfter && (
@@ -109,6 +120,8 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
               </div>
             )}
 
+            {!isCollapsed && (
+            <>
             <div className="row" style={{ marginTop: '0.4rem' }}>
               <label>
                 IF
@@ -253,6 +266,8 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
               value={rule.label ?? ''}
               onChange={(e) => setRule(idx, { label: e.target.value })}
             />
+            </>
+            )}
           </div>
         );
       })}
