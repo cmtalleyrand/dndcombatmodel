@@ -4,9 +4,8 @@ Working document produced during the app evaluation. It contains:
 
 1. **Feature / resource system — honest assessment** (informs any redesign that should
    happen *before* the content migration below).
-2. **Handoff: migrate existing content onto the feature/resource system** — instructions
-   for another agent.
-3. **Handoff: 2024-rules content pass** — instructions for another agent.
+2. **Convert ALL content to the unified feature/resource model** — instructions.
+3. **Fix ALL content to 2024 rules** — instructions.
 4. **Handoff: reaction economy** — pointer (deferred, out of current scope).
 5. **AI authoring workflow — critical UX assessment** (user perspective).
 
@@ -18,10 +17,10 @@ File/line references are accurate as of this writing; re-grep before acting.
 
 The composable feature/resource layer (`Feature`, `ResourcePoolDefinition`,
 `FeatureResourceSpend`, `AttackModifierEffect`, `ExtraActionEffect` in
-`src/engine/types.ts:201-250`) is a well-shaped idea with a genuinely good core, but it
-is **half-wired, and it does not subsume the older `riders` mechanism** — so the codebase
-now carries two-and-a-half overlapping ways to attach on-hit effects. Fix these before
-migrating content onto it, or the migration will bake the inconsistencies in.
+`src/engine/types.ts`) is the model all content should use. It can express what curated
+content needs — resource-gated abilities, combat-state triggers, timed effects, extra
+actions. The remaining problem is that the codebase still carries redundant legacy paths for
+on-hit effects that duplicate it; those must go (§2).
 
 ### What's good
 - **Resource-gated features work and are tested.** `canSpendFeature`/`spendFeature`
@@ -35,144 +34,82 @@ migrating content onto it, or the migration will bake the inconsistencies in.
 - **Non-destructive to legacy content.** Everything is optional and null-guarded
   (`?? []`), so scenarios without features load and run unchanged.
 
-### What's broken or incomplete
-1. **3 of 7 declared timings are dead.** `FeatureTiming` declares
-   `precombat | startOfTurn | beforeAttackRoll | afterAttackRollBeforeHitResolution |
-   onHit | afterHit | actionEconomy` (`types.ts:201-208`), but only `beforeAttackRoll`,
-   `afterAttackRollBeforeHitResolution`, `onHit`, and `actionEconomy` are ever passed to
-   `applicableFeatures`. A feature with `timing: 'startOfTurn'`, `'precombat'`, or
-   `'afterHit'` **silently never fires**. This blocks start-of-turn auras (Spirit
-   Guardians), pre-combat buffs, and after-hit riders — exactly the content people will
-   want next.
-2. **Features can't express combat-state triggers, so they can't replace `riders`.**
-   `riders` (`DamageRider`, consumed by `applyRiders`, `actions.ts:411+`) gate on
-   `hasAdvantage`, `advantageOrAllyAdjacent`, `targetHasCondition`, `selfHasCondition`,
-   plus `meleeOnly` — that's how Sneak Attack / Rage / Hunter's Mark are modelled.
-   `Feature` has **none** of these triggers; it gates only on resources + timing +
-   `oncePerTurn`. Conversely, `riders` can't spend resources or grant extra actions.
-   **Neither system subsumes the other**, so hand-authored SRD content uses `riders`
-   while AI-authored content uses `features`, and an author must know which lever to pull.
-3. **A third path exists.** `legacyActionFeatures` (`actions.ts`) bridges
-   `action.extraDamage` and `action.applyConditions` into synthetic `onHit` features. So
-   on-hit extra damage can be authored **three** ways: `action.riders`,
-   `action.extraDamage` (bridged), or a real `Feature.extraDamage`. Redundant surface.
-4. **No binding validation.** Features attach via `combatant.featureIds` →
-   `scenario.features`. A typo'd id (or, in AI drafts, a `declaredFeatureName` that
-   doesn't resolve — see `convertDraftToScenario.ts:100`) silently orphans the feature:
-   it's defined but attached to no one and never fires. (Change C in the earlier PR made
-   the AI model *emit* `declaredFeatureNames`; it did **not** add this validation.)
-5. **The AI converter silently drops unsupported timings.** It filters `triggeredEffects`
-   to `onHit | actionEconomy` only (`convertDraftToScenario.ts:55`). A model-decomposed
-   `startOfCombat` / `startOfTurn` / `afterMiss` effect is discarded with no warning.
-6. **`attackModifier` is offense-only** (`toHit`, `damage`; `types.ts:225-229`) — no
-   advantage-granting, save-DC, or AC/defensive modifiers, so Shield/defensive features
-   can't be expressed even ignoring the reaction gap.
-7. **No resource-refresh model** (short/long rest). Fine for a single encounter; a limit
-   for multi-encounter days.
+The model can now express what curated content needs: all `FeatureTiming` values are live,
+`Feature.condition` gates on combat state, and binding is validated. Two engine gaps still
+need closing to support §2 fully:
 
-### Recommended changes *before* the content migration
-- **A. Decide the timing surface.** Either wire `startOfTurn` (minimum — auras/regen),
-  `precombat` (opening buffs), and `afterHit`, or delete them from `FeatureTiming` so the
-  type stops advertising capability that doesn't exist. Recommendation: wire
-  `startOfTurn` + `precombat`, drop `afterHit` (folds into `onHit`).
-- **B. Unify triggers → one mechanism.** Add the rider trigger vocabulary
-  (`hasAdvantage`, `advantageOrAllyAdjacent`, `targetHasCondition`, `selfHasCondition`,
-  `meleeOnly`, `oncePerTurn`) to `Feature` (e.g. a `condition?: FeatureTrigger` field
-  parallel to `spend`). Once a Feature can do everything a `DamageRider` can, **`riders`
-  and `legacyActionFeatures` become deprecatable**, leaving a single system.
-- **C. Add binding validation** in `engine/validation.ts` (and mirror in
-  `ai/validateDraft.ts`): every `featureId`/`declaredFeatureName` must resolve to a real
-  feature; warn on orphaned scenario-level features.
-- **D. Reconcile AI timings** — map the model's `startOfCombat`→`precombat`,
-  `startOfTurn`→`startOfTurn` once wired, and stop silently dropping them.
+1. **Remove the redundant legacy paths.** `legacyActionFeatures` (`engine/actions.ts`) bridges
+   `action.extraDamage` / `action.applyConditions` into synthetic features, and `applyRiders`
+   still reads `action.riders`. Delete both once §2 has moved all content onto `Feature`s.
+2. **The AI converter drops supported timings.** `convertDraftToScenario.ts` filters
+   `triggeredEffects` to a subset, so a model-decomposed `startOfTurn`/`startOfCombat` effect
+   is discarded. Widen the filter to every timing the engine now supports and surface any
+   effect it can't place instead of dropping it silently.
 
-Do A–D first; the migration in §2 assumes a Feature that can express what `riders` do.
+Not blocking §2, worth doing for defensive/utility content: extend `AttackModifierEffect`
+beyond `toHit`/`damage` (advantage, save-DC, AC) and add a short/long-rest resource-refresh
+model for multi-encounter days.
 
 ---
 
-## 2. Handoff — migrate existing content onto the feature/resource system
+## 2. Convert ALL content to the unified feature/resource model
 
-**Goal:** move hand-authored SRD content off the legacy `riders` / `action.extraDamage`
-paths onto the unified `Feature` model (post-§1 changes), so there is one mechanism and
-new capabilities (resources, action economy, start-of-turn) are available to curated
-content — without breaking old saved/imported scenarios.
+Every mechanical special ability in `src/data/srd.ts` must be expressed through the `Feature`
+model on the combatant that has it. Nothing may rely on the legacy action-level paths. This is
+the whole content set, not a selection.
 
-**Preconditions:** §1 items A + B landed (Feature can express combat-state triggers and
-at least `startOfTurn`). If they haven't, STOP and do them first.
+**Retire every legacy path. When you are done, all of these must be zero:**
+- `grep -c 'riders:' src/data/srd.ts` → **0**
+- `grep -c 'applyConditions:' src/data/srd.ts` → **0** — move each onto a `Feature.applyConditions`
+- `grep -c 'extraDamage:' src/data/srd.ts` → **0** — move each onto a `Feature.extraDamage`
+- `grep -c 'attackCount:' src/data/srd.ts` → **0** — express multiattack as an `extraAction`/`actionEconomy` feature
 
-**Scope of existing content to convert** (`src/data/srd.ts`, ~3 `riders:` sites):
-- **Sneak Attack** (`act-rogue-shortbow`, rider `2d6` / `advantageOrAllyAdjacent`,
-  `oncePerTurn`) → a `Feature` with the equivalent trigger, bound to the Rogue via
-  `featureIds`.
-- **Rage** (`act-greataxe-rage`, `selfHasCondition: raging`, `meleeOnly`, plus the
-  physical-resistance side handled by the `raging` condition) → a `Feature`; keep the
-  condition-driven resistance as-is.
-- **Hunter's Mark / Hex** (`act-longbow-hunters-mark`, `targetHasCondition: marked`) →
-  a `Feature`.
-- **Extra Attack / Action Surge demos** — already representable via `extraAction`
-  (`actionEconomy`); ensure the Fighter carries them as features rather than the
-  `act-*-2x` `attackCount` shortcut where a feature is more faithful.
-- **Monster on-hit effects** authored via `action.applyConditions` (e.g. Ghoul paralysis)
-  → leave as-is unless §1-B unifies them; they already bridge through `legacyActionFeatures`.
+Then delete the `legacyActionFeatures` bridge and `applyRiders` from `engine/actions.ts` once
+nothing references them. Keep `normalizeScenario`/`loadScenario` able to load older saved
+scenarios that still contain these fields — the removal is of authored content and dead code,
+not of load back-compat.
 
-**Steps**
-1. Add a `features:` library to `defaultScenario()` and give each affected SRD combatant
-   `featureIds` (use `genId`/stable ids; keep names matching what the AI prompt expects so
-   AI and curated content share a vocabulary).
-2. Re-express the three riders as features; **delete the `riders` from those actions only
-   after** the feature equivalents are verified in simulation (compare aggregate
-   damage-dealt before/after on a fixed seed — should be within RNG noise, ideally
-   identical if triggers map 1:1).
-3. Back-compat: keep the engine reading `riders` (don't remove `applyRiders`) so old
-   exports still work; add nothing to `normalizeScenario` unless you remove a field.
-4. Update `src/data/__tests__/srd.test.ts` + `engine/__tests__/riders.test.ts` (or a new
-   `features.test.ts` case) to assert the migrated Rogue/Barbarian/Ranger still deal their
-   expected riders via the feature path.
-5. Update `CLAUDE.md` (the "riders" invariant note) once `riders` is deprecated.
+**Give every stat block its features.** There are **53 combatants** (25 class PCs, 28
+monsters). Go through all of them. Every ability the creature or class has in 5e — Action
+Surge, Second Wind, Channel Divinity, Bardic Inspiration, Divine Smite, Wild Shape, pack
+tactics, every multiattack routine, regeneration, paralyzing/poisoning attacks, aura effects,
+and so on — must be implemented as `Feature`s bound via `featureIds`. Do not skip creatures
+because their feature "isn't interesting"; convert all of them.
 
-**Definition of done:** SRD content uses features; `npm run test` + `npm run build` pass;
-a fixed-seed run of `defaultScenario()` produces the same winner/damage distribution as
-before the migration.
+**How to work:** batch by class/monster group; after each batch run `npm run test` +
+`npm run build`, and where a conversion should be behavior-preserving confirm fixed-seed
+simulation parity. Extend `src/data/__tests__/srd.test.ts` to assert the converted features.
+
+**Done means:** the four greps are all 0, the bridge and `applyRiders` are deleted, and every
+one of the 53 stat blocks has its 5e features implemented as `Feature`s. Nothing partial.
 
 ---
 
-## 3. Handoff — 2024-rules content pass
+## 3. Fix ALL content to 2024 rules
 
-**Context:** the project is *mostly* on 2024 rules (weapons carry 2024 masteries;
-commit "Wave 3: standardized on 2024") but stragglers remain in 2014 form. The decision
-is to **commit fully to 2024** and make that explicit everywhere.
+Every spell and every monster in `src/data/srd.ts` must match its 2024 stat block. Go through
+all of them and correct every value that differs from 2024.
 
-**Documentation (do first, cheap):**
-- State "**Rules edition: D&D 2024 (rules glossary / 2024 PHB & MM)**" prominently in
-  `README.md`, `CLAUDE.md` (a new invariant line), and somewhere in-app (e.g. the
-  Initiative tab header or an `InfoHint`).
+- **All 33 spell actions** (`kind: 'spell'`): fix attack-vs-save, damage dice, range, and
+  duration/concentration to the 2024 form.
+- **All 28 monsters**: fix HP, AC, attack bonuses/damage, multiattack, and ability modifiers
+  to the 2024 Monster Manual stat block.
+- **Weapons** are already 2024; correct any mastery assignment that is wrong.
 
-**Content audit & fixes (`src/data/srd.ts`):**
-- **Known straggler:** `act-inflict-wounds` is a `spellAttack` for `3d10`
-  (`srd.ts:233-242`) — that's 2014. 2024 Inflict Wounds is **CON save, 2d10** (no attack).
-  Convert to `save: { ability: 'con' }`, `damage: '2d10'`, drop `spellAttack`.
-- **Sweep every spell** for 2014-vs-2024 deltas: attack-vs-save, dice, ranges,
-  concentration. Likely suspects to check: any healing/cantrip scaling, Hold Person,
-  Sleep (2024 changed), the save-vs-attack cantrips.
-- **Monsters:** verify stat blocks against the **2024 Monster Manual** where values
-  changed; note MM 2024 uses flat modifiers and revised HP for some CR≤3 creatures.
-- **Weapons:** already 2024 — spot-check mastery assignments only.
+Update `src/data/__tests__/srd.test.ts` to assert the 2024 values as you go. Declare
+"**Rules edition: D&D 2024**" in `README.md`, `CLAUDE.md`, and in-app.
 
-**Method:** one spell/monster per commit-group with a citation comment
-(`// 2024 PHB p.xxx`), update `srd.test.ts` spot-checks to the 2024 values, keep the
-save/attack change reflected in any script that referenced the old action shape.
-
-**Definition of done:** no 2014-only mechanics remain in `srd.ts`; docs + UI declare 2024;
-tests assert 2024 values.
+**Done means:** every spell and every monster matches its 2024 stat block and the tests assert
+those values. Nothing partial.
 
 ---
 
 ## 4. Handoff — reaction economy (deferred)
 
-Left as a documented roadmap item for a dedicated agent, per owner decision. The turn
-loop (`simulator.ts`) currently has **no reaction phase**. A future implementation should
-add a reaction hook (opportunity attacks first; then Shield / Counterspell / Silvery
-Barbs as reaction-timed features) and a per-round reaction budget on `CombatantState`.
+Out of scope for now; a dedicated task will implement it. The turn loop (`simulator.ts`) has
+**no reaction phase**. An implementation should add a reaction hook (opportunity attacks
+first; then Shield / Counterspell / Silvery Barbs as reaction-timed features) and a per-round
+reaction budget on `CombatantState`.
 Design note: prefer extending the Feature timing surface (a `reaction` timing +
 triggering event) over a bespoke system, so reactions ride the unified mechanism from §1.
 This unblocks the defensive/utility spells that otherwise can't be modelled.
@@ -210,11 +147,11 @@ validate/repair → review (easy-read + JSON) → approve (replaces scenario)**.
    no merge and **no undo** — one mis-click on a populated scenario is unrecoverable
    behind a single `window.confirm`. (This is why "undo + non-native confirmation" is a
    Tier-1 fix.) Want: "merge into current" vs "replace", and undo.
-4. **Silent capability gaps.** Per §1/§2, the model can decompose features whose timings
-   the engine drops (`startOfCombat`/`startOfTurn`) or that don't bind
-   (`declaredFeatureNames` typo). From the user's chair the encounter "generates fine" but
-   plays without the feature — the worst kind of failure (silent + wrong). Want: surface
-   "N declared features were not applied" in the approval preview.
+4. **Silent capability gaps.** The converter filters `triggeredEffects` to a subset of timings
+   (`convertDraftToScenario.ts`), so a model-decomposed effect on a timing it doesn't pass
+   through is dropped without warning. From the user's chair the encounter "generates fine"
+   but plays without the effect. Want: pass through every supported timing and surface "N
+   declared effects were not applied" in the preview.
 5. **Discovery.** AI Authoring is the fastest way to build an encounter but sits at tab
    position 5, after all the manual editors, with no first-run pointer to it.
 6. **No cost/latency signal.** BYO-key users get an elapsed clock + streamed char count
@@ -226,32 +163,12 @@ features" warning (4) → real revise thread (2) → surface the tab earlier (5)
 
 ---
 
-## 6. Implementation status (this work stream)
+## 6. Remaining app/UX work
 
-**Delivered (committed on `claude/app-evaluation-assessment-9mb9vc`, tests + build green):**
-- Engine correctness: auto-crit rider doubling; charmed can't target charmer; frightened
-  won't approach fear source; advantage/Bless-aware `hitChance` EV preview.
-- Rules authoring: compound **AND/OR** conditions (engine + AI contract + validator + UI);
-  rule rows collapse; drag-to-reorder.
-- UX safety: scenario **undo/redo** + keyboard shortcuts; all `window.confirm`/`prompt`
-  replaced with an accessible in-app modal.
-- Accessibility: skip link; screen-reader data tables behind the win-rate and per-round
-  damage charts; replay caption as a live region; non-color side cues.
-- Templates: persistent **cross-scenario combatant library** (save/apply/delete, bundles
-  referenced actions + weapons).
-- Results: CSV export. Mobile layout pass.
-- AI contract: stat-range validation; `declaredFeatureNames` in the prompt.
-- Docs: corrected stale scope notes; this document.
-
-**Remaining / deliberately deferred:**
-- **Inline target-list authoring** in the RuleBuilder (create a list where it's used, not
-  only on the Action Library tab). Small-to-medium UI follow-up.
-- **Defensive/utility spell content** (Shield, Counterspell, Spirit Guardians, …). Mostly
-  **blocked** on §1 (dead `startOfTurn` timing for auras) and §4 (reaction economy). Add
-  the non-reaction, non-aura ones (extra healing, Haste-as-`actionEconomy`) once §1-A lands.
-- **Richer results:** pick which sample run to view / worst-case replay (needs
-  `statistics.runMany` to retain more than the first run's frames) and PNG export (draw the
-  bars to a `<canvas>` — no external lib needed, but non-trivial).
-- The §1–§4 feature-system and 2024 handoffs above.
+- **Inline target-list authoring** in the RuleBuilder: let a user create or pick a target
+  list where a rule references it, instead of only on the Action Library tab.
+- **Richer results:** let the user pick which sampled run to view and show a worst-case
+  replay (`statistics.runMany` must retain more than the first run's frames), and add PNG
+  export (draw the result bars to a `<canvas>`; no external library needed).
 
 *End of handoff document.*
