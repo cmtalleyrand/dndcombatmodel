@@ -85,6 +85,40 @@ describe('Rage rider + physical resistance', () => {
   });
 });
 
+describe('rider dice on a melee auto-crit', () => {
+  // A melee hit against a paralyzed target is an auto-crit; rider dice should double just
+  // like the weapon dice do. We compare against a restrained target (advantage-against but
+  // no auto-crit) so both runs draw the same two d20s and start the rider from the same RNG
+  // position — the only difference is the auto-crit doubling.
+  const flatAtkWithRider = () => fixtureAction({
+    id: 'crit-rider',
+    name: 'Rider Strike',
+    attackBonus: 20,
+    damage: '5',
+    damageType: 'slashing',
+    riders: [{ label: 'Big Rider', bonusDice: '4d6', trigger: 'always' }],
+  });
+
+  const run = (targetCondition: 'restrained' | 'paralyzed') => {
+    const action = flatAtkWithRider();
+    const state = fixtureState(
+      [riderCombatant('atk', 'pc', { position: 0 }), riderCombatant('foe', 'monster', { position: 0, maxHp: 500 })],
+      [action],
+    );
+    state.combatants[1].conditions.push({ kind: targetCondition, duration: { type: 'rounds', rounds: 10 } });
+    performAction(state, new RNG(9), state.combatants[0], action, [state.combatants[1]], []);
+    return state.combatants[1].hp;
+  };
+
+  it('doubles rider bonus dice against a paralyzed (auto-crit) target', () => {
+    const restrainedHp = run('restrained'); // single rider dice
+    const paralyzedHp = run('paralyzed'); // auto-crit → doubled rider dice
+    // Auto-crit doubles the rider's 4d6, so the paralyzed target takes strictly more damage
+    // (weapon flat 5 is identical in both; only the rider differs).
+    expect(paralyzedHp).toBeLessThan(restrainedHp);
+  });
+});
+
 describe("Hunter's Mark rider", () => {
   it('adds bonus dice only against a marked target', () => {
     const action = fixtureAction({

@@ -142,3 +142,34 @@ describe('validateDraft decomposed feature semantics', () => {
     expect(validateDraft(draft).some((error) => error.includes('pseudo-action'))).toBe(true);
   });
 });
+
+describe('validateDraft stat-range enforcement', () => {
+  it('rejects out-of-range HP, AC, and ability scores', () => {
+    const draft = baseDraft({
+      pcs: [{ ...baseDraft().pcs[0], maxHp: 99999, ac: 0, abilityScores: { str: 40, dex: 12, con: 14, int: 10, wis: 10, cha: 8 } }],
+    });
+    const errors = validateDraft(draft);
+    expect(errors.some((e) => e.includes('maxHp'))).toBe(true);
+    expect(errors.some((e) => e.includes('AC'))).toBe(true);
+    expect(errors.some((e) => e.includes('str score'))).toBe(true);
+  });
+
+  it('rejects out-of-range proficiency bonus, speed, and level', () => {
+    const draft = baseDraft({
+      pcs: [{ ...baseDraft().pcs[0], proficiencyBonus: 50, speed: 500, level: 99 }],
+    });
+    const errors = validateDraft(draft);
+    expect(errors.some((e) => e.includes('proficiencyBonus'))).toBe(true);
+    expect(errors.some((e) => e.includes('speed'))).toBe(true);
+    expect(errors.some((e) => e.includes('level'))).toBe(true);
+  });
+
+  it('rejects a draft with no combatants at all', () => {
+    const draft = baseDraft({ pcs: [], enemies: [] });
+    expect(validateDraft(draft).some((e) => e.includes('no combatants'))).toBe(true);
+  });
+
+  it('accepts a normal stat block', () => {
+    expect(validateDraft(baseDraft())).toEqual([]);
+  });
+});

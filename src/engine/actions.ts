@@ -614,8 +614,10 @@ function resolveAttack(
 
       const isCritHit = isMeleeAutoCrit(target, gap) || roll.isCrit;
       let dmg = rollDamageTotal(rng, profile.damageDice, profile.damageFlat + damageModifier, isCritHit);
-      // Conditional feature riders (Sneak Attack, Rage, Hunter's Mark…).
-      const riderBonus = applyRiders(state, rng, actor, target, action, adv, gap, roll.isCrit, events);
+      // Conditional feature riders (Sneak Attack, Rage, Hunter's Mark…). Use isCritHit so
+      // rider dice double on a melee auto-crit (vs paralyzed/unconscious), matching the
+      // weapon dice above — not just on a natural 20.
+      const riderBonus = applyRiders(state, rng, actor, target, action, adv, gap, isCritHit, events);
       dmg += riderBonus;
       const onHitFeatures = applicableFeatures(state, actor, action, 'onHit').filter((f) => canSpendFeature(actor, f));
       for (const feature of onHitFeatures) {

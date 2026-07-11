@@ -78,11 +78,15 @@ Engine internals, if you need to trace a turn: `simulator.ts` drives the round l
 
 ## Scope boundaries (settled; don't relitigate without asking)
 
-- **Reactions (opportunity attacks, Shield, Counterspell), legendary actions, a full
-  resistance/immunity matrix, and death-save detail are not modeled yet, but they
-  are roadmap items**, not rejected features. When touching turn resolution or the
-  action economy, prefer designs that leave room for these later rather than ones
-  that assume they'll never exist.
+- **Reactions (opportunity attacks, Shield, Counterspell) and legendary/lair actions
+  are not modeled yet, but they are roadmap items**, not rejected features. When
+  touching turn resolution or the action economy, prefer designs that leave room for
+  these later rather than ones that assume they'll never exist. (Per-damage-type
+  resistances / immunities / vulnerabilities and death saves *are* modeled —
+  `Combatant.resistances/immunities/vulnerabilities/conditionImmunities` +
+  `damageMultiplier` in `engine/actions.ts`, and `rollDeathSave` in
+  `engine/simulator.ts` — so don't re-add them; the remaining resistance work is
+  conditional/situational riders, not the basic matrix.)
 - **AI authoring is a core feature**, not experimental — it's a first-class way to
   build a scenario, on par with the manual editors. The prompt contract in
   `ai/schemaPrompt.ts` (`AI_GENERATION_SYSTEM_PROMPT`, the `AIScenarioDraft` shape)

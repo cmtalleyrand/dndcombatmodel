@@ -19,6 +19,42 @@ function norm(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+/**
+ * Enforce that stat blocks stay within sane 5e bounds. The system prompt asks the model to
+ * "keep ability scores, AC, and HP within normal 5e ranges", but nothing checked it until now,
+ * so a hallucinated 9999-HP or AC-0 combatant would silently pass into an approved scenario.
+ */
+function validateCombatantStats(
+  combatant: AIScenarioDraft['pcs'][number],
+  errors: string[],
+): void {
+  const label = combatant.name || '(unnamed combatant)';
+  const inRange = (value: number, min: number, max: number) =>
+    Number.isFinite(value) && value >= min && value <= max;
+
+  if (!inRange(combatant.maxHp, 1, 1000)) {
+    errors.push(`${label}: maxHp ${combatant.maxHp} is outside the expected range (1–1000)`);
+  }
+  if (!inRange(combatant.ac, 1, 30)) {
+    errors.push(`${label}: AC ${combatant.ac} is outside the expected range (1–30)`);
+  }
+  if (!inRange(combatant.proficiencyBonus, 0, 10)) {
+    errors.push(`${label}: proficiencyBonus ${combatant.proficiencyBonus} is outside the expected range (0–10)`);
+  }
+  for (const ability of ABILITIES) {
+    const score = combatant.abilityScores?.[ability];
+    if (score === undefined || !inRange(score, 1, 30)) {
+      errors.push(`${label}: ${ability} score ${score} is outside the expected range (1–30)`);
+    }
+  }
+  if (combatant.speed !== undefined && !inRange(combatant.speed, 0, 120)) {
+    errors.push(`${label}: speed ${combatant.speed} is outside the expected range (0–120)`);
+  }
+  if (combatant.level !== undefined && !inRange(combatant.level, 1, 20)) {
+    errors.push(`${label}: level ${combatant.level} is outside the expected range (1–20)`);
+  }
+}
+
 function featureMentioned(feature: string, text: string | undefined): boolean {
   if (!text) return false;
   return norm(text).includes(norm(feature));
@@ -84,9 +120,14 @@ export function validateDraft(draft: AIScenarioDraft): string[] {
   const combatantNames = new Set<string>();
   const actionNames = new Set<string>();
 
+  if (draft.pcs.length === 0 && draft.enemies.length === 0) {
+    errors.push('Draft has no combatants: at least one of pcs / enemies must be non-empty');
+  }
+
   for (const combatant of [...draft.pcs, ...draft.enemies]) {
     if (combatantNames.has(combatant.name)) errors.push(`Duplicate combatant name: ${combatant.name}`);
     combatantNames.add(combatant.name);
+    validateCombatantStats(combatant, errors);
   }
 
   for (const action of draft.actions) {

@@ -40,6 +40,7 @@ interface AIDraftCombatant {
   immunities?: string[]; // damage types taken as zero
   vulnerabilities?: string[]; // damage types taken at double
   conditionImmunities?: string[]; // condition kinds this cannot suffer, e.g. ["poisoned","charmed"]
+  declaredFeatureNames?: string[]; // names of this combatant's class/species features (e.g. ["Rage","Extra Attack"]); each must match a featureDecompositions[].sourceName so the feature is wired to this combatant
 }
 
 // A reusable attack/spell/ability. Prefer the simple "manual" attack/damage fields below

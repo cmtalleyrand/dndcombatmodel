@@ -13,6 +13,46 @@ function pct(x: number) {
   return `${(x * 100).toFixed(1)}%`;
 }
 
+function csvEscape(value: string | number): string {
+  const s = String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Serialize the aggregate results to CSV: a summary block followed by a per-combatant table. */
+export function buildResultsCsv(stats: AggregateStats, scenario: Scenario): string {
+  const rows: string[] = [];
+  rows.push(['section', 'key', 'value'].join(','));
+  rows.push(['summary', 'scenario', csvEscape(scenario.name)].join(','));
+  rows.push(['summary', 'simulations', stats.simulations].join(','));
+  rows.push(['summary', 'partyWinRate', stats.pcWinRate.toFixed(4)].join(','));
+  rows.push(['summary', 'drawRate', stats.drawRate.toFixed(4)].join(','));
+  rows.push(['summary', 'monsterWinRate', stats.monsterWinRate.toFixed(4)].join(','));
+  rows.push(['summary', 'avgRounds', stats.avgRounds.toFixed(2)].join(','));
+  rows.push('');
+  rows.push(['name', 'side', 'maxHp', 'survivalRate', 'avgEndHp', 'avgDamageDealt', 'avgDamageTaken', 'avgHealingDone'].join(','));
+  for (const c of stats.combatants) {
+    rows.push([
+      csvEscape(c.name), c.side, c.maxHp,
+      c.survivalRate.toFixed(4), c.avgEndHp.toFixed(2),
+      c.avgDamageDealt.toFixed(2), c.avgDamageTaken.toFixed(2), c.avgHealingDone.toFixed(2),
+    ].join(','));
+  }
+  return rows.join('\n');
+}
+
+function downloadResultsCsv(stats: AggregateStats, scenario: Scenario): void {
+  const blob = new Blob([buildResultsCsv(stats, scenario)], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (scenario.name || 'scenario').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  a.href = url;
+  a.download = `${safeName}-results.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export function Results({ stats, scenario, onOpenReplay }: Props) {
   const pcStats = stats.combatants.filter((c) => c.side === 'pc');
   const monsterStats = stats.combatants.filter((c) => c.side === 'monster');
@@ -23,6 +63,16 @@ export function Results({ stats, scenario, onOpenReplay }: Props) {
 
   return (
     <div>
+      <div className="row" style={{ justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+        <button
+          className="secondary"
+          onClick={() => downloadResultsCsv(stats, scenario)}
+          title="Download aggregate results (win rates + per-combatant stats) as CSV"
+        >
+          Export CSV
+        </button>
+      </div>
+
       <Outcome stats={stats} />
 
       <div className="grid-2">
