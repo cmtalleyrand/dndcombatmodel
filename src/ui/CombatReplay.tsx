@@ -265,7 +265,8 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
         )}
       </div>
 
-      <div className="replay-caption">
+      <div className="replay-caption" role="status" aria-live="polite" aria-atomic="true">
+        <span className="sr-only">{frame.round === 0 ? 'Setup. ' : `Round ${frame.round}. `}</span>
         {frame.events.length === 0 ? (
           <span className="muted">
             {frame.round === 0 ? 'Combatants take their starting positions.' : '…'}
@@ -289,8 +290,8 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
       </div>
 
       <div className="replay-controls">
-        <button className="ghost mini" onClick={() => go(0)} title="Restart" disabled={idx === 0}>⏮</button>
-        <button className="ghost mini" onClick={() => go(idx - 1)} title="Step back" disabled={idx === 0}>◀</button>
+        <button className="ghost mini" onClick={() => go(0)} title="Restart" aria-label="Restart" disabled={idx === 0}>⏮</button>
+        <button className="ghost mini" onClick={() => go(idx - 1)} title="Step back" aria-label="Step back" disabled={idx === 0}>◀</button>
         <button
           className="mini"
           onClick={() => (atEnd ? (setIdx(0), setPlaying(true)) : setPlaying((p) => !p))}
@@ -299,8 +300,8 @@ export function CombatReplay({ scenario, frames, winner, rounds }: Props) {
         >
           {playing ? '⏸ Pause' : atEnd ? '↺ Replay' : '▶ Play'}
         </button>
-        <button className="ghost mini" onClick={() => go(idx + 1)} title="Step forward" disabled={atEnd}>▶</button>
-        <button className="ghost mini" onClick={() => go(last)} title="Skip to end" disabled={atEnd}>⏭</button>
+        <button className="ghost mini" onClick={() => go(idx + 1)} title="Step forward" aria-label="Step forward" disabled={atEnd}>▶</button>
+        <button className="ghost mini" onClick={() => go(last)} title="Skip to end" aria-label="Skip to end" disabled={atEnd}>⏭</button>
 
         <input
           className="replay-scrub"

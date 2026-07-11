@@ -123,6 +123,7 @@ export function App() {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#main">Skip to main content</a>
       <header className="app-header">
         <div>
           <h1>⚔️ D&D 5e Combat Simulator</h1>
@@ -182,6 +183,7 @@ export function App() {
       </div>
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} tabIndex={0}>
+      <div id="main" tabIndex={-1}>
       {tab === 'pcs' && (
         <CombatantsTab side="pc" scenario={scenario} setScenario={setScenario} />
       )}
@@ -205,6 +207,7 @@ export function App() {
       {tab === 'replay' && (
         <ReplayTab scenario={scenario} stats={stats} statsStale={statsStale} onGoToRun={() => setTab('run')} />
       )}
+      </div>
       </div>
     </div>
   );

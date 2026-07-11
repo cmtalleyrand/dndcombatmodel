@@ -108,13 +108,27 @@ function Outcome({ stats }: { stats: AggregateStats }) {
         <span className="muted">{stats.simulations.toLocaleString()} simulations</span>
       </div>
 
-      <div className="winbar" role="img" aria-label="Win rate distribution">
+      <div className="winbar" role="img" aria-label="Win rate distribution" aria-hidden="true">
         {segs.map((s) => (
           <div key={s.key} className={`winbar-seg ${s.cls}`} style={{ width: `${s.value * 100}%` }}>
             {s.value >= 0.08 && <span>{pct(s.value)}</span>}
           </div>
         ))}
       </div>
+
+      <table className="sr-only">
+        <caption>Win rate distribution with approximate 95% intervals</caption>
+        <thead><tr><th>Outcome</th><th>Rate</th><th>95% interval</th></tr></thead>
+        <tbody>
+          {intervals.map(({ key, label, interval }) => (
+            <tr key={key}>
+              <th scope="row">{label}</th>
+              <td>{pct(key === 'pc' ? stats.pcWinRate : key === 'draw' ? stats.drawRate : stats.monsterWinRate)}</td>
+              <td>{pct(interval.lower)}–{pct(interval.upper)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       <div className="winbar-key">
         <span className="legend-chip pc">Party {pct(stats.pcWinRate)}</span>
@@ -145,10 +159,10 @@ function RosterPanel({ title, side, rows }: { title: string; side: 'pc' | 'monst
       {rows.map((r) => (
         <div className="cstat" key={r.id}>
           <div className="cstat-head">
-            <span className="cstat-name">{r.name}</span>
+            <span className="cstat-name">{r.name}<span className="sr-only"> ({side === 'pc' ? 'party member' : 'monster'})</span></span>
             <span className="muted">{pct(r.survivalRate)} survive</span>
           </div>
-          <div className="meter" title={`Survival ${pct(r.survivalRate)}`}>
+          <div className="meter" title={`Survival ${pct(r.survivalRate)}`} role="img" aria-label={`Survival rate ${pct(r.survivalRate)}`}>
             <div className={`meter-fill ${side}`} style={{ width: `${r.survivalRate * 100}%` }} />
           </div>
           <div className="cstat-figs">
@@ -188,7 +202,24 @@ function PerRoundDamage({ stats, rounds }: { stats: AggregateStats; rounds: numb
   return (
     <div className="panel">
       <h3>Average damage dealt per round</h3>
-      <div className="dmg-chart">
+      <table className="sr-only">
+        <caption>Average damage dealt per round by combatant</caption>
+        <thead>
+          <tr>
+            <th>Combatant</th>
+            {Array.from({ length: rounds }, (_, i) => <th key={i}>Round {i + 1}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {stats.combatants.map((c) => (
+            <tr key={c.id}>
+              <th scope="row">{c.name} ({c.side === 'pc' ? 'party' : 'monster'})</th>
+              {Array.from({ length: rounds }, (_, i) => <td key={i}>{(c.avgDamageByRound[i] ?? 0).toFixed(1)}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="dmg-chart" aria-hidden="true">
         {stats.combatants.map((c) => (
           <div className="dmg-row" key={c.id}>
             <span className={`dmg-name ${c.side}`}>{c.name}</span>

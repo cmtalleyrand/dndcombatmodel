@@ -1395,6 +1395,32 @@ td.num, th.num {
 }
 .history-table th { color: var(--muted); font-weight: 600; }
 
+/* Screen-reader-only content: present to assistive tech, invisible on screen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* Skip link: hidden until focused, then anchored top-left. */
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  z-index: 100;
+  background: var(--panel-3);
+  color: var(--text);
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0 0 8px 0;
+}
+.skip-link:focus { left: 0; }
+
 /* In-app modal dialogs (confirm / prompt) replacing native window.confirm / prompt. */
 .dialog-backdrop {
   position: fixed;
