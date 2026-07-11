@@ -8,9 +8,10 @@ import type {
   RuleTemplate,
   Scenario,
   ScriptPreset,
+  TargetList,
   TargetStrategy,
 } from '../engine/types';
-import { deletePreset, loadPresets, savePreset } from '../state/store';
+import { deletePreset, genId, loadPresets, savePreset, upsertTargetList } from '../state/store';
 import { useDialogs } from './Dialogs';
 import { CONDITION_KINDS } from '../engine/conditions';
 import { CONDITION_TYPES, defaultCondition, describeCondition, describeTarget, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
@@ -20,9 +21,11 @@ interface Props {
   combatant: Combatant;
   scenario: Scenario;
   onChange: (script: Rule[]) => void;
+  setScenario: (s: Scenario) => void;
 }
 
-export function RuleBuilder({ combatant, scenario, onChange }: Props) {
+export function RuleBuilder({ combatant, scenario, onChange, setScenario }: Props) {
+  const { promptText } = useDialogs();
   const rules = [...combatant.script].sort((a, b) => a.priority - b.priority);
   const available = scenario.actions.filter((a) => combatant.actionIds.includes(a.id));
   const enemies = scenario.combatants.filter((c) => c.side !== combatant.side);
@@ -332,6 +335,28 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
                         );
                       })}
                     </div>
+                    {(rule.target.namedTargets?.length ?? 0) > 0 && (
+                      <button
+                        className="secondary mini"
+                        style={{ marginTop: '0.3rem' }}
+                        onClick={async () => {
+                          const name = await promptText('Save this target order as a reusable list named:', '', {
+                            title: 'New reusable target list', confirmLabel: 'Save',
+                          });
+                          if (!name) return;
+                          const list: TargetList = {
+                            id: genId('tl'),
+                            name,
+                            entries: rule.target.namedTargets ?? [],
+                            fallback: rule.target.fallback ?? 'lowestHpEnemy',
+                          };
+                          setScenario(upsertTargetList(scenario, list));
+                          setRule(idx, { target: { ...rule.target, listId: list.id, namedTargets: undefined } });
+                        }}
+                      >
+                        💾 Save as reusable list
+                      </button>
+                    )}
                   </>
                 )}
               </div>

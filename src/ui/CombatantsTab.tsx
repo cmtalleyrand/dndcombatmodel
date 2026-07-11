@@ -563,7 +563,7 @@ function CombatantCard({
                 </select>
               </div>
             )}
-            <RuleBuilder combatant={combatant} scenario={scenario} onChange={(script) => update({ script })} />
+            <RuleBuilder combatant={combatant} scenario={scenario} setScenario={setScenario} onChange={(script) => update({ script })} />
           </div>
         </div>
       )}
