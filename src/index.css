@@ -1395,6 +1395,45 @@ td.num, th.num {
 }
 .history-table th { color: var(--muted); font-weight: 600; }
 
+/* In-app modal dialogs (confirm / prompt) replacing native window.confirm / prompt. */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+}
+.dialog {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem 1.25rem 1rem;
+  max-width: 30rem;
+  width: 100%;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.dialog-title { margin: 0 0 0.5rem; font-size: 1.05rem; }
+.dialog-message { margin: 0 0 0.9rem; color: var(--text); }
+.dialog-input {
+  width: 100%;
+  margin-bottom: 0.9rem;
+  box-sizing: border-box;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+button.danger {
+  background: var(--monster);
+  border-color: var(--monster);
+  color: #fff;
+}
+button.danger:hover { filter: brightness(1.08); }
+
 /* Respect users who prefer reduced motion: still the ambient animations. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

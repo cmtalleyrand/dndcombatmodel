@@ -5,6 +5,7 @@ import { copyScript, duplicateCombatant, genId, removeCombatant, upsertCombatant
 import { SRD_WEAPONS } from '../data/weapons';
 import { defaultPosition } from '../engine/state';
 import { RuleBuilder } from './RuleBuilder';
+import { useDialogs } from './Dialogs';
 import { describeAction } from './describe';
 import { InfoHint } from './InfoHint';
 import { HeartIcon, ShieldHalfIcon, TrashIcon, pickCombatantIcon } from './icons';
@@ -187,6 +188,7 @@ function CombatantCard({
   open: boolean;
   onToggle: () => void;
 }) {
+  const { confirm } = useDialogs();
   const update = (patch: Partial<Combatant>) =>
     setScenario(upsertCombatant(scenario, { ...combatant, ...patch }));
 
@@ -226,10 +228,12 @@ function CombatantCard({
         <div className="row">
           <select
             value=""
-            onChange={(e) => {
+            onChange={async (e) => {
               const template = sideTemplates.find((t) => t.id === e.target.value);
               if (!template) return;
-              if (!window.confirm(`Replace ${combatant.name} with the "${template.name}" preset? This discards its current stats, actions, and script.`)) {
+              if (!(await confirm(`Replace ${combatant.name} with the "${template.name}" preset? This discards its current stats, actions, and script.`, {
+                title: 'Replace combatant', confirmLabel: 'Replace', danger: true,
+              }))) {
                 return;
               }
               const replacement = cloneStoredCombatant(template, scenario.combatants.filter((c) => c.id !== combatant.id));
@@ -258,8 +262,10 @@ function CombatantCard({
           </button>
           <button
             className="danger icon-only"
-            onClick={() => {
-              if (window.confirm(`Delete ${combatant.name}?`)) setScenario(removeCombatant(scenario, combatant.id));
+            onClick={async () => {
+              if (await confirm(`Delete ${combatant.name}?`, { title: 'Delete combatant', confirmLabel: 'Delete', danger: true })) {
+                setScenario(removeCombatant(scenario, combatant.id));
+              }
             }}
             title="Delete"
             aria-label="Delete"

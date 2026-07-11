@@ -36,6 +36,7 @@ import { CONDITION_CATALOG, CONDITION_KINDS } from '../engine/conditions';
 import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS } from '../data/srd';
 import { CONDITION_TYPES, defaultCondition, describeCondition, describeTarget, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
 import { describeActionGeneric } from './describe';
+import { useDialogs } from './Dialogs';
 import { InfoHint } from './InfoHint';
 import { ScrollIcon, TrashIcon, pickActionIcon, pickWeaponIcon } from './icons';
 
@@ -54,6 +55,7 @@ const WEAPON_PROPS: WeaponProperty[] = ['finesse', 'ranged', 'versatile', 'twoHa
 const WEAPON_MASTERIES: WeaponMastery[] = ['cleave', 'graze', 'nick', 'push', 'sap', 'slow', 'topple', 'vex'];
 
 export function ActionLibraryTab({ scenario, setScenario }: Props) {
+  const { confirm } = useDialogs();
   const [openId, setOpenId] = useState<string | null>(null);
   const weaponsById = useMemo(() => {
     const m: Record<string, Weapon> = {};
@@ -140,11 +142,13 @@ export function ActionLibraryTab({ scenario, setScenario }: Props) {
                   <button
                     className="danger mini icon-only"
                     disabled={builtin}
-                    onClick={() => {
+                    onClick={async () => {
                       const warning = usedBy.length
                         ? `Delete "${a.name}"? It is used by ${usedBy.length} combatant script${usedBy.length > 1 ? 's' : ''}, which will break until fixed.`
                         : `Delete "${a.name}"?`;
-                      if (window.confirm(warning)) setScenario(removeAction(scenario, a.id));
+                      if (await confirm(warning, { title: 'Delete action', confirmLabel: 'Delete', danger: true })) {
+                        setScenario(removeAction(scenario, a.id));
+                      }
                     }}
                     title="Delete"
                     aria-label="Delete"

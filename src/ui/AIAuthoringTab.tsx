@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Scenario } from '../engine/types';
 import { InfoHint } from './InfoHint';
+import { useDialogs } from './Dialogs';
 import type { AIScenarioDraft } from '../ai/types';
 import { convertDraftToScenario } from '../ai/convertDraftToScenario';
 import {
@@ -115,6 +116,7 @@ function draftFromScenario(scenario: Scenario, prompt: string): AIScenarioDraft 
 const PROVIDER_LABEL: Record<AIProvider, string> = { anthropic: 'Claude (Anthropic)', openai: 'ChatGPT (OpenAI)' };
 
 export function AIAuthoringTab({ scenario, setScenario }: Props) {
+  const { confirm } = useDialogs();
   const [prompt, setPrompt] = useState('');
   const [draftText, setDraftText] = useState(JSON.stringify(emptyDraft, null, 2));
   const [approvalTemplate, setApprovalTemplate] = useState(formatApprovalTemplate(emptyDraft));
@@ -162,8 +164,10 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
     setApprovalTemplate(formatApprovalTemplate(parsed));
   };
 
-  const useTemplate = () => {
-    if (prompt.trim() && !window.confirm('Replace the current prompt with the fill-in template?')) return;
+  const useTemplate = async () => {
+    if (prompt.trim() && !(await confirm('Replace the current prompt with the fill-in template?', {
+      title: 'Use template', confirmLabel: 'Replace',
+    }))) return;
     setPrompt(AI_PROMPT_TEMPLATE);
   };
 
@@ -242,12 +246,14 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
     void runGeneration(buildRevisionUserPrompt(draftText, prompt), 'revised');
   };
 
-  const approve = () => {
+  const approve = async () => {
     if (!parsedDraft) {
       setMessage('Cannot apply invalid JSON.');
       return;
     }
-    if (!window.confirm('Approve this draft? It replaces the entire current scenario (combatants, actions, scripts).')) {
+    if (!(await confirm('Approve this draft? It replaces the entire current scenario (combatants, actions, scripts). You can undo this.', {
+      title: 'Approve AI draft', confirmLabel: 'Approve & replace', danger: true,
+    }))) {
       return;
     }
     try {

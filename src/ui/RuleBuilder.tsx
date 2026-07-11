@@ -10,6 +10,7 @@ import type {
   TargetStrategy,
 } from '../engine/types';
 import { deletePreset, loadPresets, savePreset } from '../state/store';
+import { useDialogs } from './Dialogs';
 import { CONDITION_KINDS } from '../engine/conditions';
 import { CONDITION_TYPES, defaultCondition, describeCondition, describeTarget, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
 import { NumberInput } from './NumberInput';
@@ -263,10 +264,13 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
 
 /** Save the current script as a named preset, or append a saved preset's rules. */
 function PresetBar({ rules, onApply }: { rules: Rule[]; onApply: (rules: Rule[]) => void }) {
+  const { promptText } = useDialogs();
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
 
-  const save = () => {
-    const name = window.prompt('Save this script as a reusable preset named:');
+  const save = async () => {
+    const name = await promptText('Save this script as a reusable preset named:', '', {
+      title: 'Save script preset', confirmLabel: 'Save',
+    });
     if (!name) return;
     setPresets(savePreset(name, rules));
   };

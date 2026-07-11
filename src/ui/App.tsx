@@ -43,14 +43,55 @@ export function App() {
   // tweak one value, and re-run to compare rather than losing the numbers.
   const [statsStale, setStatsStale] = useState(false);
   const [history, setHistory] = useState<RunHistoryEntry[]>([]);
+  // Undo/redo makes every destructive action (delete, reset, import, AI approve,
+  // preset replace) recoverable, since setScenario is the single mutation choke point.
+  const [undoStack, setUndoStack] = useState<Scenario[]>([]);
+  const [redoStack, setRedoStack] = useState<Scenario[]>([]);
+  const UNDO_LIMIT = 30;
 
-  const setScenario = (s: Scenario) => {
+  const applyScenario = (s: Scenario) => {
     setScenarioState(s);
     saveScenario(s);
     // A changed scenario makes the previous run's results/replay out of date,
     // but we keep them visible (marked stale) instead of discarding them.
     setStatsStale(true);
   };
+
+  const setScenario = (s: Scenario) => {
+    setUndoStack((prev) => [...prev, scenario].slice(-UNDO_LIMIT));
+    setRedoStack([]);
+    applyScenario(s);
+  };
+
+  const undo = () => {
+    if (undoStack.length === 0) return;
+    const previous = undoStack[undoStack.length - 1];
+    setUndoStack(undoStack.slice(0, -1));
+    setRedoStack((prev) => [...prev, scenario].slice(-UNDO_LIMIT));
+    applyScenario(previous);
+  };
+
+  const redo = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack(redoStack.slice(0, -1));
+    setUndoStack((prev) => [...prev, scenario].slice(-UNDO_LIMIT));
+    applyScenario(next);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      // Don't hijack undo inside a text field the user is editing.
+      const target = e.target as HTMLElement | null;
+      if (target && /^(input|textarea|select)$/i.test(target.tagName)) return;
+      if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   const recordResults = (next: AggregateStats) => {
     setStats(next);
@@ -89,7 +130,27 @@ export function App() {
             Configure combatants, script their priorities, and run Monte-Carlo simulations.
           </div>
         </div>
-        <ScenarioIO scenario={scenario} setScenario={setScenario} onReset={() => setScenario(resetScenario())} />
+        <div className="row">
+          <button
+            className="secondary"
+            onClick={undo}
+            disabled={undoStack.length === 0}
+            title="Undo last change (Ctrl/Cmd+Z)"
+            aria-label="Undo last change"
+          >
+            ↶ Undo
+          </button>
+          <button
+            className="secondary"
+            onClick={redo}
+            disabled={redoStack.length === 0}
+            title="Redo (Ctrl/Cmd+Shift+Z)"
+            aria-label="Redo"
+          >
+            ↷ Redo
+          </button>
+          <ScenarioIO scenario={scenario} setScenario={setScenario} onReset={() => setScenario(resetScenario())} />
+        </div>
       </header>
 
       <div className="tabs" role="tablist" aria-label="Sections">
