@@ -84,6 +84,15 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
     onChange(renumber(next));
   };
 
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const reorder = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return;
+    const next = [...rules];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onChange(renumber(next));
+  };
+
   if (available.length === 0) {
     return <p className="muted">Select at least one action above to build a script.</p>;
   }
@@ -111,9 +120,25 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
         const deadAfter = rules.slice(0, idx).some((r) => r.condition.type === 'always');
         const isCollapsed = collapsed.has(idx);
         return (
-          <div className="rule" key={idx}>
+          <div
+            className={`rule ${dragIdx === idx ? 'dragging' : ''}`}
+            key={idx}
+            onDragOver={(e) => { if (dragIdx !== null) e.preventDefault(); }}
+            onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) reorder(dragIdx, idx); setDragIdx(null); }}
+          >
             <div className="row spread">
               <div className="row" style={{ gap: '0.5rem' }}>
+                <span
+                  className="drag-handle"
+                  draggable
+                  onDragStart={() => setDragIdx(idx)}
+                  onDragEnd={() => setDragIdx(null)}
+                  title="Drag to reorder"
+                  aria-label="Drag to reorder rule"
+                  role="button"
+                >
+                  ⠿
+                </span>
                 <span className="priority-badge">{rule.priority}</span>
                 {rule.label && <span className="muted">{rule.label}</span>}
               </div>

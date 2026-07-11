@@ -1411,6 +1411,18 @@ td.num, th.num {
 }
 .history-table th { color: var(--muted); font-weight: 600; }
 
+/* Rule drag-to-reorder handle. */
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  color: var(--muted);
+  padding: 0 0.15rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.drag-handle:active { cursor: grabbing; }
+.rule.dragging { opacity: 0.5; }
+
 /* Screen-reader-only content: present to assistive tech, invisible on screen. */
 .sr-only {
   position: absolute;
