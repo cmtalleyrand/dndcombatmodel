@@ -21,8 +21,23 @@ function hpPct(c: CombatantState): number {
   return (c.hp / c.base.maxHp) * 100;
 }
 
-/** Evaluate a single rule predicate against the current state. */
+/** Evaluate a rule predicate — the primary leaf combined with any `extra` leaves via AND/OR. */
 export function evaluateCondition(
+  state: CombatState,
+  actor: CombatantState,
+  cond: RuleCondition,
+  action: Action,
+): boolean {
+  const primary = evaluateLeaf(state, actor, cond, action);
+  if (!cond.extra || cond.extra.length === 0) return primary;
+  const extras = cond.extra.map((e) => evaluateLeaf(state, actor, e, action));
+  return cond.combine === 'or'
+    ? primary || extras.some(Boolean)
+    : primary && extras.every(Boolean);
+}
+
+/** Evaluate one leaf predicate (ignores `extra`/`combine`). */
+function evaluateLeaf(
   state: CombatState,
   actor: CombatantState,
   cond: RuleCondition,

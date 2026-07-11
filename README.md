@@ -71,8 +71,10 @@ deployed as a static site to GitHub Pages.
 **2D positioning deferred:** Space is modelled as linear 1D space as a deliberate simplification.
 
 **Not modeled yet, but on the roadmap:** reactions (opportunity attacks, Shield,
-Counterspell), legendary actions, a full resistance/immunity matrix beyond physical
-resistance, and finer death-save detail. See the in-app notes and the plan.
+Counterspell) and legendary/lair actions. See the in-app notes and the plan.
+
+**Already modeled:** per-damage-type resistances, immunities, and vulnerabilities (not
+just physical), and death saves (nat-1/nat-20, 3-success/3-failure, damage-while-down).
 
 ## Getting started
 

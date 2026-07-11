@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { performAction } from '../actions';
+import { approach } from '../movement';
+import { resolveTargets } from '../targeting';
 import { RNG } from '../dice';
 import { CONDITION_CATALOG, CONDITION_KINDS, effectiveSpeed, isIncapacitated } from '../conditions';
-import { buildCombatState, targetAdvantage } from '../state';
+import { buildCombatState, distance, targetAdvantage } from '../state';
 import type { Action, Combatant, ConditionKind, Scenario } from '../types';
 
 const SRD_CONDITIONS: ConditionKind[] = [
@@ -121,5 +123,43 @@ describe('SRD condition mechanics', () => {
     performAction(state, new RNG(1), state.combatants[0], spell, [target], []);
 
     expect(target.hp).toBe(18);
+  });
+
+  it('charmed: cannot target the charmer, but can still attack other enemies', () => {
+    const state = buildCombatState(testState([
+      testCombatant('hero', 'pc', 0),
+      testCombatant('charmer', 'monster', 0), // nearest, but off-limits
+      testCombatant('other', 'monster', 30),
+    ]));
+    const [hero, charmer, other] = state.combatants;
+    hero.conditions.push({ kind: 'charmed', duration: { type: 'permanent' }, sourceId: 'charmer' });
+
+    const picked = resolveTargets(state, hero, { strategy: 'nearestEnemy' }, 1);
+    expect(picked).toEqual([other]);
+    expect(picked).not.toContain(charmer);
+
+    // With the charmer gone (unconscious) the constraint still holds while charmed.
+    const both = resolveTargets(state, hero, { strategy: 'allEnemies' }, 5);
+    expect(both.map((c) => c.base.id)).toEqual(['other']);
+  });
+
+  it('frightened: will not willingly move closer to the source of fear', () => {
+    const state = buildCombatState(testState([
+      testCombatant('coward', 'pc', 30),
+      testCombatant('terror', 'monster', 0),
+    ]));
+    const [coward, terror] = state.combatants;
+    coward.speed = 30;
+
+    // Not yet frightened: approaching closes the distance.
+    approach(state, coward, terror, 0, []);
+    expect(distance(coward, terror)).toBeLessThan(30);
+
+    // Reset and frighten: approach toward the terror is refused.
+    coward.position = 30;
+    coward.movedThisTurn = 0;
+    coward.conditions.push({ kind: 'frightened', duration: { type: 'permanent' }, sourceId: 'terror' });
+    approach(state, coward, terror, 0, []);
+    expect(distance(coward, terror)).toBe(30);
   });
 });

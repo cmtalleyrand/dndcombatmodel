@@ -1,10 +1,22 @@
 import { useMemo, useState } from 'react';
 import { ABILITIES, type Ability, type Combatant, type Scenario, type Side, type Skill } from '../engine/types';
 import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS, SRD_ACTIONS } from '../data/srd';
-import { copyScript, duplicateCombatant, genId, removeCombatant, upsertCombatant } from '../state/store';
+import {
+  copyScript,
+  deleteCombatantTemplate,
+  duplicateCombatant,
+  genId,
+  loadCombatantTemplates,
+  mergeTemplateLibrary,
+  removeCombatant,
+  saveCombatantTemplate,
+  upsertCombatant,
+  type CombatantTemplate,
+} from '../state/store';
 import { SRD_WEAPONS } from '../data/weapons';
 import { defaultPosition } from '../engine/state';
 import { RuleBuilder } from './RuleBuilder';
+import { useDialogs } from './Dialogs';
 import { describeAction } from './describe';
 import { InfoHint } from './InfoHint';
 import { HeartIcon, ShieldHalfIcon, TrashIcon, pickCombatantIcon } from './icons';
@@ -117,12 +129,30 @@ export function CombatantsTab({ side, scenario, setScenario }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState('blank');
   const templates = templatesForSide(side);
+  const [saved, setSaved] = useState<CombatantTemplate[]>(() => loadCombatantTemplates());
+  const savedForSide = saved.filter((t) => t.side === side);
+  const selectedSaved = savedForSide.find((t) => t.id === templateId);
 
   const add = () => {
+    if (selectedSaved) {
+      // Drop the saved template's actions/weapons in, then add a fresh copy of the combatant.
+      const withLibrary = mergeTemplateLibrary(scenario, selectedSaved);
+      const clone = cloneStoredCombatant(selectedSaved.combatant, withLibrary.combatants);
+      setScenario(upsertCombatant(withLibrary, clone));
+      setOpenId(clone.id);
+      return;
+    }
     const template = templates.find((c) => c.id === templateId);
     const c = template ? cloneStoredCombatant(template, scenario.combatants) : blankCombatant(side);
     setScenario(template ? addCombatantWithDefaultActions(scenario, c) : upsertCombatant(scenario, c));
     setOpenId(c.id);
+  };
+
+  const onSavedToLibrary = () => setSaved(loadCombatantTemplates());
+  const deleteSaved = () => {
+    if (!selectedSaved) return;
+    setSaved(deleteCombatantTemplate(selectedSaved.id));
+    setTemplateId('blank');
   };
 
   return (
@@ -145,13 +175,27 @@ export function CombatantsTab({ side, scenario, setScenario }: Props) {
               aria-label={`Stored ${side === 'pc' ? 'PC' : 'monster'} to add`}
             >
               <option value="blank">Blank {side === 'pc' ? 'PC' : 'monster'}</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>{template.name}</option>
-              ))}
+              {savedForSide.length > 0 && (
+                <optgroup label="Saved to library">
+                  {savedForSide.map((template) => (
+                    <option key={template.id} value={template.id}>★ {template.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Built-in">
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>{template.name}</option>
+                ))}
+              </optgroup>
             </select>
             <button onClick={add}>
               + Add {side === 'pc' ? 'PC' : 'Monster'} ({combatants.length})
             </button>
+            {selectedSaved && (
+              <button className="danger mini" onClick={deleteSaved} title="Delete this saved template">
+                Delete saved
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -167,6 +211,7 @@ export function CombatantsTab({ side, scenario, setScenario }: Props) {
             setScenario={setScenario}
             open={openId === c.id}
             onToggle={() => setOpenId(openId === c.id ? null : c.id)}
+            onSavedToLibrary={onSavedToLibrary}
           />
         ))}
       </div>
@@ -180,13 +225,24 @@ function CombatantCard({
   setScenario,
   open,
   onToggle,
+  onSavedToLibrary,
 }: {
   combatant: Combatant;
   scenario: Scenario;
   setScenario: (s: Scenario) => void;
   open: boolean;
   onToggle: () => void;
+  onSavedToLibrary: () => void;
 }) {
+  const { confirm, promptText } = useDialogs();
+  const saveToLibrary = async () => {
+    const name = await promptText('Save this combatant to your reusable library as:', combatant.name, {
+      title: 'Save to library', confirmLabel: 'Save',
+    });
+    if (!name) return;
+    saveCombatantTemplate(scenario, combatant, name);
+    onSavedToLibrary();
+  };
   const update = (patch: Partial<Combatant>) =>
     setScenario(upsertCombatant(scenario, { ...combatant, ...patch }));
 
@@ -226,10 +282,12 @@ function CombatantCard({
         <div className="row">
           <select
             value=""
-            onChange={(e) => {
+            onChange={async (e) => {
               const template = sideTemplates.find((t) => t.id === e.target.value);
               if (!template) return;
-              if (!window.confirm(`Replace ${combatant.name} with the "${template.name}" preset? This discards its current stats, actions, and script.`)) {
+              if (!(await confirm(`Replace ${combatant.name} with the "${template.name}" preset? This discards its current stats, actions, and script.`, {
+                title: 'Replace combatant', confirmLabel: 'Replace', danger: true,
+              }))) {
                 return;
               }
               const replacement = cloneStoredCombatant(template, scenario.combatants.filter((c) => c.id !== combatant.id));
@@ -257,9 +315,19 @@ function CombatantCard({
             ⧉
           </button>
           <button
+            className="ghost icon-only"
+            onClick={saveToLibrary}
+            title="Save to reusable library"
+            aria-label="Save to reusable library"
+          >
+            ★
+          </button>
+          <button
             className="danger icon-only"
-            onClick={() => {
-              if (window.confirm(`Delete ${combatant.name}?`)) setScenario(removeCombatant(scenario, combatant.id));
+            onClick={async () => {
+              if (await confirm(`Delete ${combatant.name}?`, { title: 'Delete combatant', confirmLabel: 'Delete', danger: true })) {
+                setScenario(removeCombatant(scenario, combatant.id));
+              }
             }}
             title="Delete"
             aria-label="Delete"

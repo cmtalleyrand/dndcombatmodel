@@ -386,6 +386,14 @@ export interface RuleCondition {
   value?: number;
   /** condition parameter for has-condition predicates. */
   condition?: ConditionKind;
+  /**
+   * Additional leaf predicates combined with the primary one via `combine`. Each entry is a
+   * plain leaf (its own `extra` is ignored) — a single level of AND/OR, which covers
+   * "bloodied AND enemy concentrating" without opening up arbitrary nesting.
+   */
+  extra?: RuleCondition[];
+  /** how to combine the primary predicate with `extra` (default 'and'). */
+  combine?: 'and' | 'or';
 }
 
 /**

@@ -3,6 +3,7 @@ import type {
   Combatant,
   ConditionKind,
   Rule,
+  RuleCondition,
   RuleConditionType,
   RuleTemplate,
   Scenario,
@@ -10,6 +11,7 @@ import type {
   TargetStrategy,
 } from '../engine/types';
 import { deletePreset, loadPresets, savePreset } from '../state/store';
+import { useDialogs } from './Dialogs';
 import { CONDITION_KINDS } from '../engine/conditions';
 import { CONDITION_TYPES, defaultCondition, describeCondition, describeTarget, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
 import { NumberInput } from './NumberInput';
@@ -27,9 +29,32 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
 
   const renumber = (list: Rule[]): Rule[] => list.map((r, i) => ({ ...r, priority: i + 1 }));
 
+  // Collapsed rules show only their one-line sentence, so a long script isn't a wall of selects.
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const toggleCollapsed = (idx: number) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+
   const setRule = (idx: number, patch: Partial<Rule>) => {
     const next = rules.map((r, i) => (i === idx ? { ...r, ...patch } : r));
     onChange(renumber(next));
+  };
+
+  const addExtra = (idx: number) => {
+    const c = rules[idx].condition;
+    setRule(idx, { condition: { ...c, extra: [...(c.extra ?? []), { type: 'always' }], combine: c.combine ?? 'and' } });
+  };
+  const updateExtra = (idx: number, exIdx: number, leaf: RuleCondition) => {
+    const c = rules[idx].condition;
+    setRule(idx, { condition: { ...c, extra: (c.extra ?? []).map((e, i) => (i === exIdx ? leaf : e)) } });
+  };
+  const removeExtra = (idx: number, exIdx: number) => {
+    const c = rules[idx].condition;
+    const extra = (c.extra ?? []).filter((_, i) => i !== exIdx);
+    setRule(idx, { condition: { ...c, extra: extra.length ? extra : undefined } });
   };
 
   const addRule = () => {
@@ -59,6 +84,15 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
     onChange(renumber(next));
   };
 
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const reorder = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return;
+    const next = [...rules];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onChange(renumber(next));
+  };
+
   if (available.length === 0) {
     return <p className="muted">Select at least one action above to build a script.</p>;
   }
@@ -84,14 +118,32 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
         const actionName = scenario.actions.find((a) => a.id === rule.actionId)?.name ?? '(no action)';
         // Any earlier unconditional rule makes this one unreachable ("first match wins").
         const deadAfter = rules.slice(0, idx).some((r) => r.condition.type === 'always');
+        const isCollapsed = collapsed.has(idx);
         return (
-          <div className="rule" key={idx}>
+          <div
+            className={`rule ${dragIdx === idx ? 'dragging' : ''}`}
+            key={idx}
+            onDragOver={(e) => { if (dragIdx !== null) e.preventDefault(); }}
+            onDrop={(e) => { e.preventDefault(); if (dragIdx !== null) reorder(dragIdx, idx); setDragIdx(null); }}
+          >
             <div className="row spread">
               <div className="row" style={{ gap: '0.5rem' }}>
+                <span
+                  className="drag-handle"
+                  draggable
+                  onDragStart={() => setDragIdx(idx)}
+                  onDragEnd={() => setDragIdx(null)}
+                  title="Drag to reorder"
+                  aria-label="Drag to reorder rule"
+                  role="button"
+                >
+                  ⠿
+                </span>
                 <span className="priority-badge">{rule.priority}</span>
                 {rule.label && <span className="muted">{rule.label}</span>}
               </div>
               <div className="row">
+                <button className="ghost mini" onClick={() => toggleCollapsed(idx)} aria-expanded={!isCollapsed} aria-label={isCollapsed ? 'Expand rule' : 'Collapse rule'} title={isCollapsed ? 'Expand' : 'Collapse'}>{isCollapsed ? '▸' : '▾'}</button>
                 <button className="ghost mini" onClick={() => move(idx, -1)} disabled={idx === 0} aria-label="Move rule up" title="Move up">↑</button>
                 <button className="ghost mini" onClick={() => move(idx, 1)} disabled={idx === rules.length - 1} aria-label="Move rule down" title="Move down">↓</button>
                 <button className="secondary mini" onClick={() => duplicate(idx)} aria-label="Duplicate rule">⧉ Duplicate</button>
@@ -99,7 +151,7 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
               </div>
             </div>
 
-            <div className="rule-sentence">
+            <div className="rule-sentence" onClick={() => toggleCollapsed(idx)} style={{ cursor: 'pointer' }} title={isCollapsed ? 'Click to edit' : 'Click to collapse'}>
               IF <strong>{describeCondition(rule.condition)}</strong> THEN <strong>{actionName}</strong> targeting <strong>{describeTarget(rule.target)}</strong>
             </div>
             {deadAfter && (
@@ -108,6 +160,8 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
               </div>
             )}
 
+            {!isCollapsed && (
+            <>
             <div className="row" style={{ marginTop: '0.4rem' }}>
               <label>
                 IF
@@ -153,6 +207,43 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
                 </label>
               )}
             </div>
+
+            {(rule.condition.extra ?? []).map((ex, exIdx) => {
+              const exMeta = CONDITION_TYPES.find((c) => c.value === ex.type)!;
+              return (
+                <div className="row" style={{ marginTop: '0.3rem' }} key={exIdx}>
+                  <label>
+                    <select
+                      value={rule.condition.combine ?? 'and'}
+                      onChange={(e) => setRule(idx, { condition: { ...rule.condition, combine: e.target.value as 'and' | 'or' } })}
+                      aria-label="Combine with primary condition"
+                    >
+                      <option value="and">AND</option>
+                      <option value="or">OR</option>
+                    </select>
+                  </label>
+                  <label>
+                    <select value={ex.type} onChange={(e) => updateExtra(idx, exIdx, defaultCondition(e.target.value as RuleConditionType))}>
+                      {CONDITION_TYPES.map((c) => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {exMeta.needs === 'value' && (
+                    <NumberInput className="num" min={0} value={ex.value ?? 0} onChange={(n) => updateExtra(idx, exIdx, { ...ex, value: n })} />
+                  )}
+                  {exMeta.needs === 'condition' && (
+                    <select value={ex.condition ?? 'asleep'} onChange={(e) => updateExtra(idx, exIdx, { ...ex, condition: e.target.value as ConditionKind })}>
+                      {CONDITION_KINDS.map((k) => (
+                        <option key={k} value={k}>{k}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button className="danger mini" onClick={() => removeExtra(idx, exIdx)} aria-label="Remove condition" title="Remove condition">✕</button>
+                </div>
+              );
+            })}
+            <button className="secondary mini" style={{ marginTop: '0.3rem' }} onClick={() => addExtra(idx)}>+ AND / OR condition</button>
 
             <div className="row" style={{ marginTop: '0.4rem' }}>
               <label>
@@ -252,6 +343,8 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
               value={rule.label ?? ''}
               onChange={(e) => setRule(idx, { label: e.target.value })}
             />
+            </>
+            )}
           </div>
         );
       })}
@@ -263,10 +356,13 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
 
 /** Save the current script as a named preset, or append a saved preset's rules. */
 function PresetBar({ rules, onApply }: { rules: Rule[]; onApply: (rules: Rule[]) => void }) {
+  const { promptText } = useDialogs();
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
 
-  const save = () => {
-    const name = window.prompt('Save this script as a reusable preset named:');
+  const save = async () => {
+    const name = await promptText('Save this script as a reusable preset named:', '', {
+      title: 'Save script preset', confirmLabel: 'Save',
+    });
     if (!name) return;
     setPresets(savePreset(name, rules));
   };

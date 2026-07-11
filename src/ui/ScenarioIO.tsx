@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { Scenario } from '../engine/types';
 import { exportFullBundle, exportScenario, importFullBundle, importScenario } from '../state/store';
 import { Menu, MenuItem } from './Menu';
+import { useDialogs } from './Dialogs';
 import { LoadIcon, ResetIcon, SaveIcon } from './icons';
 
 interface Props {
@@ -16,6 +17,7 @@ export function ScenarioIO({ scenario, setScenario, onReset }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const importModeRef = useRef<ImportMode>('scenario');
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useDialogs();
 
   const downloadJson = (contents: string, filename: string) => {
     const blob = new Blob([contents], { type: 'application/json' });
@@ -45,7 +47,9 @@ export function ScenarioIO({ scenario, setScenario, onReset }: Props) {
       const text = await file.text();
       const parsed =
         importModeRef.current === 'bundle' ? importFullBundle(text).currentScenario : importScenario(text);
-      if (!window.confirm('Importing replaces the current scenario. Continue?')) return;
+      if (!(await confirm('Importing replaces the current scenario. Continue?', {
+        title: 'Import scenario', confirmLabel: 'Replace', danger: true,
+      }))) return;
       setScenario(parsed);
       setError(null);
     } catch (e) {
@@ -53,8 +57,10 @@ export function ScenarioIO({ scenario, setScenario, onReset }: Props) {
     }
   };
 
-  const confirmReset = () => {
-    if (window.confirm('Reset to the sample scenario? This discards your current scenario.')) {
+  const confirmReset = async () => {
+    if (await confirm('Reset to the sample scenario? This discards your current scenario.', {
+      title: 'Reset scenario', confirmLabel: 'Reset', danger: true,
+    })) {
       onReset();
     }
   };

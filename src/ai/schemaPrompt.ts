@@ -40,6 +40,7 @@ interface AIDraftCombatant {
   immunities?: string[]; // damage types taken as zero
   vulnerabilities?: string[]; // damage types taken at double
   conditionImmunities?: string[]; // condition kinds this cannot suffer, e.g. ["poisoned","charmed"]
+  declaredFeatureNames?: string[]; // names of this combatant's class/species features (e.g. ["Rage","Extra Attack"]); each must match a featureDecompositions[].sourceName so the feature is wired to this combatant
 }
 
 // A reusable attack/spell/ability. Prefer the simple "manual" attack/damage fields below
@@ -80,6 +81,10 @@ interface AIDraftRule {
       | 'anyEnemyConcentrating' | 'slotAvailable';
     value?: number;
     condition?: string; // condition kind for selfHasCondition/anyEnemyHasCondition, e.g. "poisoned", "frightened", "blessed"
+    // Optional compound predicate: extra leaf conditions (same shape, each with its own type/value/condition)
+    // combined with the primary via combine. Use for "bloodied AND an enemy is concentrating".
+    extra?: { type: string; value?: number; condition?: string }[];
+    combine?: 'and' | 'or'; // how to combine the primary condition with extra (default 'and')
   };
   target: {
     // strategy must be one of these exact strings
