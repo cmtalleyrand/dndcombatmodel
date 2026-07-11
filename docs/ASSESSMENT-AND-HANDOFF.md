@@ -226,4 +226,32 @@ features" warning (4) → real revise thread (2) → surface the tab earlier (5)
 
 ---
 
+## 6. Implementation status (this work stream)
+
+**Delivered (committed on `claude/app-evaluation-assessment-9mb9vc`, tests + build green):**
+- Engine correctness: auto-crit rider doubling; charmed can't target charmer; frightened
+  won't approach fear source; advantage/Bless-aware `hitChance` EV preview.
+- Rules authoring: compound **AND/OR** conditions (engine + AI contract + validator + UI);
+  rule rows collapse; drag-to-reorder.
+- UX safety: scenario **undo/redo** + keyboard shortcuts; all `window.confirm`/`prompt`
+  replaced with an accessible in-app modal.
+- Accessibility: skip link; screen-reader data tables behind the win-rate and per-round
+  damage charts; replay caption as a live region; non-color side cues.
+- Templates: persistent **cross-scenario combatant library** (save/apply/delete, bundles
+  referenced actions + weapons).
+- Results: CSV export. Mobile layout pass.
+- AI contract: stat-range validation; `declaredFeatureNames` in the prompt.
+- Docs: corrected stale scope notes; this document.
+
+**Remaining / deliberately deferred:**
+- **Inline target-list authoring** in the RuleBuilder (create a list where it's used, not
+  only on the Action Library tab). Small-to-medium UI follow-up.
+- **Defensive/utility spell content** (Shield, Counterspell, Spirit Guardians, …). Mostly
+  **blocked** on §1 (dead `startOfTurn` timing for auras) and §4 (reaction economy). Add
+  the non-reaction, non-aura ones (extra healing, Haste-as-`actionEconomy`) once §1-A lands.
+- **Richer results:** pick which sample run to view / worst-case replay (needs
+  `statistics.runMany` to retain more than the first run's frames) and PNG export (draw the
+  bars to a `<canvas>` — no external lib needed, but non-trivial).
+- The §1–§4 feature-system and 2024 handoffs above.
+
 *End of handoff document.*
