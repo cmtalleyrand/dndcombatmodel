@@ -6,9 +6,17 @@ import type { AIScenarioDraft } from '../ai/types';
 import { convertDraftToScenario } from '../ai/convertDraftToScenario';
 import { DraftPreview } from './DraftPreview';
 import {
+  EncounterBuilder,
+  buildEncounterDescription,
+  emptyEncounterForm,
+  encounterFormHasContent,
+  type EncounterForm,
+} from './EncounterBuilder';
+import { buildLibraryReference } from './aiLibraryContext';
+import { saveCombatantTemplate } from '../state/store';
+import {
   AI_AUTHORING_SCHEMA_PROMPT,
   AI_GENERATION_SYSTEM_PROMPT,
-  AI_PROMPT_TEMPLATE,
   buildGenerationUserPrompt,
   buildRevisionUserPrompt,
   buildValidationRepairUserPrompt,
@@ -118,7 +126,8 @@ const PROVIDER_LABEL: Record<AIProvider, string> = { anthropic: 'Claude (Anthrop
 
 export function AIAuthoringTab({ scenario, setScenario }: Props) {
   const { confirm } = useDialogs();
-  const [prompt, setPrompt] = useState('');
+  const [form, setForm] = useState<EncounterForm>(() => emptyEncounterForm());
+  const [reviseText, setReviseText] = useState('');
   const [draftText, setDraftText] = useState(JSON.stringify(emptyDraft, null, 2));
   const [approvalTemplate, setApprovalTemplate] = useState(formatApprovalTemplate(emptyDraft));
   const [message, setMessage] = useState<string | null>(null);
@@ -129,6 +138,7 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
   const [settings, setSettings] = useState<AISettings>(() => loadAISettings());
   const [previewMode, setPreviewMode] = useState<'cards' | 'text'>('cards');
   const [showRawJson, setShowRawJson] = useState(false);
+  const [saveToLibrary, setSaveToLibrary] = useState(true);
 
   // Live "still working" feedback: a ticking clock while a request is in flight,
   // since encounter drafts can take a while to fully generate.
@@ -165,13 +175,6 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
   const applyParsedDraft = (parsed: AIScenarioDraft) => {
     setDraftText(JSON.stringify(parsed, null, 2));
     setApprovalTemplate(formatApprovalTemplate(parsed));
-  };
-
-  const useTemplate = async () => {
-    if (prompt.trim() && !(await confirm('Replace the current prompt with the fill-in template?', {
-      title: 'Use template', confirmLabel: 'Replace',
-    }))) return;
-    setPrompt(AI_PROMPT_TEMPLATE);
   };
 
   const runGeneration = async (userPrompt: string, successVerb: 'generated' | 'revised') => {
@@ -214,17 +217,18 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
   };
 
   const generateDraft = () => {
+    const description = buildEncounterDescription(form);
     if (!hasKey) {
-      const next = draftFromScenario(scenario, prompt);
+      const next = draftFromScenario(scenario, description);
       applyParsedDraft(next);
-      setMessage('No API key configured — generated a local draft mirroring the current scenario instead. Add a key under AI Provider to generate from your prompt.');
+      setMessage('No API key configured — generated a local draft mirroring the current scenario instead. Add a key under AI Provider to generate from your encounter.');
       return;
     }
-    if (!prompt.trim()) {
-      setMessage('Describe the encounter in the prompt box first (or click "Use template").');
+    if (!encounterFormHasContent(form)) {
+      setMessage('Fill in at least a PC or a monster in the builder above first.');
       return;
     }
-    void runGeneration(buildGenerationUserPrompt(prompt), 'generated');
+    void runGeneration(buildGenerationUserPrompt(description, buildLibraryReference(scenario)), 'generated');
   };
 
   const reviseDraft = () => {
@@ -235,18 +239,17 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
     if (!hasKey) {
       const next = {
         ...parsedDraft,
-        scenarioSummary: prompt.trim() || parsedDraft.scenarioSummary,
-        assumptionsRequiringApproval: [...parsedDraft.assumptionsRequiringApproval, 'User requested revision before approval.'],
+        scenarioSummary: reviseText.trim() || parsedDraft.scenarioSummary,
       };
       applyParsedDraft(next);
-      setMessage('No API key configured — applied a local note instead of an AI revision. Add a key under AI Provider to revise with your prompt.');
+      setMessage('No API key configured — applied a local note instead of an AI revision. Add a key under AI Provider to revise with your instructions.');
       return;
     }
-    if (!prompt.trim()) {
-      setMessage('Describe what to change in the prompt box first.');
+    if (!reviseText.trim()) {
+      setMessage('Describe what to change in the "Ask for changes" box first.');
       return;
     }
-    void runGeneration(buildRevisionUserPrompt(draftText, prompt), 'revised');
+    void runGeneration(buildRevisionUserPrompt(draftText, reviseText), 'revised');
   };
 
   const approve = async () => {
@@ -254,14 +257,27 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
       setMessage('Cannot apply invalid JSON.');
       return;
     }
-    if (!(await confirm('Approve this draft? It replaces the entire current scenario (combatants, actions, scripts). You can undo this.', {
-      title: 'Approve AI draft', confirmLabel: 'Approve & replace', danger: true,
+    const savingNote = saveToLibrary ? ' Its combatants will also be saved to your reusable ★ library.' : '';
+    if (!(await confirm(`Approve this draft? It replaces the entire current scenario (combatants, actions, scripts).${savingNote} You can undo the scenario change.`, {
+      title: 'Approve AI draft', confirmLabel: 'Approve & apply', danger: true,
     }))) {
       return;
     }
     try {
-      setScenario(convertDraftToScenario(parsedDraft));
-      setMessage('Approved draft applied to the scenario.');
+      const applied = convertDraftToScenario(parsedDraft);
+      setScenario(applied);
+      let savedCount = 0;
+      if (saveToLibrary) {
+        for (const combatant of applied.combatants) {
+          saveCombatantTemplate(applied, combatant);
+          savedCount += 1;
+        }
+      }
+      setMessage(
+        savedCount > 0
+          ? `Approved draft applied. Saved ${savedCount} combatant${savedCount === 1 ? '' : 's'} to your ★ library.`
+          : 'Approved draft applied to the scenario.',
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Draft validation failed.');
     }
@@ -278,7 +294,7 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
       <div className="row spread">
         <div>
           <h2>AI Authoring</h2>
-          <div className="muted">Describe an encounter, review a typed draft, then approve it into simulator state.</div>
+          <div className="muted">Build an encounter, review it as PC &amp; monster stat cards, then approve it into simulator state.</div>
         </div>
         <span className="tag">Scenario changes only on approval</span>
       </div>
@@ -346,29 +362,50 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
         </div>
       </div>
 
-      {/* Prompt sits above the preview (full width) so the description you write and
-          the encounter it produces read top-to-bottom, not squeezed side-by-side. */}
+      {/* A structured builder sits above the preview (full width) so the encounter you
+          compose and the draft it produces read top-to-bottom. Fill in as much or as
+          little as you like — empty fields are simply left out of the request. */}
       <div className="card" style={{ marginTop: '1rem' }}>
         <div className="row spread">
-          <h3>Describe your encounter</h3>
-          <button type="button" className="ghost mini" onClick={useTemplate} disabled={busy}>Use template</button>
+          <h3>
+            Build your encounter{' '}
+            <span className="muted" style={{ fontWeight: 400, fontSize: '0.8rem' }}>
+              every field is optional — add only what matters
+            </span>
+          </h3>
         </div>
-        <label style={{ width: '100%' }}>
-          PCs (class, level, key abilities), monsters (type, key abilities), encounter distance, tactics, and goals
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder={'Example: 4 PCs — Wizard 5 (INT 18, Fireball/Firebolt), Fighter 5 (STR 18, Longbow), Cleric 5 (WIS 16, Cure Wounds), Rogue 5 (DEX 18, Sneak Attack). Vs 2 Ogres (CR 2, Greatclub). Start 60 ft apart. Wizard opens with Fireball, cleric heals anyone below 50%.'}
-            style={{ minHeight: '7rem' }}
-          />
-        </label>
-        <div className="row" style={{ marginTop: '0.75rem' }}>
+
+        <EncounterBuilder form={form} setForm={setForm} disabled={busy} />
+
+        <div className="row" style={{ marginTop: '1rem' }}>
           <button onClick={generateDraft} disabled={busy}>
             {hasKey ? 'Generate draft' : 'Generate local draft'}
           </button>
-          <button className="secondary" onClick={reviseDraft} disabled={busy}>Revise draft</button>
           <button disabled={errors.length > 0 || busy} onClick={approve}>Approve and apply</button>
           <button className="danger" onClick={discard} disabled={busy}>Discard draft</button>
+          <label className="check-inline" style={{ marginLeft: 'auto' }}>
+            <input type="checkbox" checked={saveToLibrary} disabled={busy} onChange={(e) => setSaveToLibrary(e.target.checked)} />
+            Save combatants to my ★ library on approve
+          </label>
+        </div>
+
+        <div className="ai-revise">
+          <label style={{ width: '100%' }}>
+            Ask for changes <span className="muted" style={{ fontWeight: 400 }}>(revise the current draft without rebuilding it)</span>
+            <div className="row" style={{ marginTop: '0.35rem', flexWrap: 'nowrap' }}>
+              <input
+                value={reviseText}
+                disabled={busy}
+                placeholder="e.g. give the wizard Misty Step, move the ogres to 30 ft, make the cleric heal below 40%"
+                onChange={(e) => setReviseText(e.target.value)}
+                style={{ flex: 1 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !busy) reviseDraft();
+                }}
+              />
+              <button className="secondary" onClick={reviseDraft} disabled={busy}>Revise draft</button>
+            </div>
+          </label>
         </div>
 
         {busy && (

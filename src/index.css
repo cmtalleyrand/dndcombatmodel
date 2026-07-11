@@ -905,20 +905,6 @@ td.num, th.num {
 }
 .draft-rule:last-child { border-bottom: none; }
 .draft-rule-body { min-width: 0; }
-.draft-assumptions {
-  margin-top: 1rem;
-  padding: 0.6rem 0.85rem;
-  background: rgba(205, 163, 73, 0.06);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-}
-.draft-assumptions ul {
-  margin: 0;
-  padding-left: 1.1rem;
-  font-size: 0.8rem;
-  color: var(--muted);
-  line-height: 1.6;
-}
 .draft-raw {
   margin-top: 1rem;
 }
@@ -927,6 +913,93 @@ td.num, th.num {
   font-size: 0.82rem;
   color: var(--muted);
   user-select: none;
+}
+
+/* ── Structured encounter builder ───────────────────────── */
+.builder {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.builder-group {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.8rem;
+  background: var(--bg-2);
+}
+.builder-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.builder-group-title {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.builder-group-title.pc { color: var(--pc-soft); }
+.builder-group-title.monster { color: var(--monster-soft); }
+
+.builder-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--border);
+  background: var(--panel);
+}
+.builder-row + .builder-row { margin-top: 0.5rem; }
+.builder-row.pc { border-left-color: var(--pc); }
+.builder-row.monster { border-left-color: var(--monster); }
+
+.builder-row-index {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-top: 1.15rem;
+  border-radius: 50%;
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.builder-fields {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.55rem;
+  min-width: 0;
+}
+.builder-fields > label {
+  min-width: 0;
+}
+.builder-fields > label input {
+  width: 100%;
+}
+.builder-fields > label.grow { flex: 1 1 9rem; }
+.builder-fields > label.wide { flex: 1 1 100%; }
+.builder-fields > label.tiny { flex: 0 0 4.2rem; }
+.builder-fields > label.small { flex: 0 0 9rem; }
+
+.builder-remove {
+  flex: 0 0 auto;
+  margin-top: 1rem;
+}
+.builder-remove:disabled { opacity: 0.3; }
+
+.ai-revise {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-soft);
 }
 
 /* ── Big stats ──────────────────────────────────────────── */

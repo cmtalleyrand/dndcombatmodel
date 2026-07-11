@@ -62,16 +62,6 @@ export function DraftPreview({ draft }: { draft: AIScenarioDraft }) {
         </div>
       )}
 
-      {(draft.assumptionsRequiringApproval?.length ?? 0) > 0 && (
-        <div className="draft-assumptions">
-          <div className="section-title" style={{ marginBottom: '0.4rem' }}>Assumptions to confirm before approving</div>
-          <ul>
-            {draft.assumptionsRequiringApproval.map((item, i) => (
-              <li key={i}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }

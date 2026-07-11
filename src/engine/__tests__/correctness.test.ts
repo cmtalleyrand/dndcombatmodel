@@ -9,7 +9,6 @@ import {
   fixtureState,
   scriptedCombatant,
 } from '../../test/fixtures';
-import type { LogEvent } from '../log';
 
 describe('crit damage doubling', () => {
   it('doubles the dice count but leaves the flat modifier alone', () => {
@@ -75,21 +74,29 @@ describe('save-ends timing', () => {
 });
 
 describe('extra typed damage', () => {
-  it('applies an extra damage packet of a distinct type on a hit', () => {
-    const flametongue = fixtureAction({
+  it('resolves an extra damage packet against resistances independently of the base damage type', () => {
+    const action = fixtureAction({
       id: 'ft',
-      name: 'Flame Blade',
+      name: 'Two-Type Strike',
       attackBonus: 50, // always hits
       damage: '1d8',
       damageType: 'slashing',
-      extraDamage: [{ dice: '2d6', type: 'fire', label: 'flames' }],
+      extraDamage: [{ dice: '2d6', type: 'fire', label: 'extra' }],
     });
-    const state = fixtureState(
-      [fixtureCombatant('ftr', 'pc', { position: 0 }), fixtureCombatant('foe', 'monster', { position: 0, ac: 1 })],
-      [flametongue],
-    );
-    const events: LogEvent[] = [];
-    performAction(state, new RNG(3), state.combatants[0], flametongue, [state.combatants[1]], events);
-    expect(events.some((e) => e.message.includes('flames'))).toBe(true);
+    const run = (immunities: string[] = []) => {
+      const state = fixtureState(
+        [fixtureCombatant('atk', 'pc', { position: 0 }), fixtureCombatant('foe', 'monster', { position: 0, ac: 1, immunities: immunities as never })],
+        [action],
+      );
+      performAction(state, new RNG(3), state.combatants[0], action, [state.combatants[1]], []);
+      return state.combatants[1].hp;
+    };
+
+    const hpNoImmunity = run();
+    const hpFireImmune = run(['fire']);
+
+    // Same seed, so the base slashing damage is identical in both runs; fire immunity
+    // must block only the extra fire packet, leaving strictly less total damage.
+    expect(hpFireImmune).toBeGreaterThan(hpNoImmunity);
   });
 });
