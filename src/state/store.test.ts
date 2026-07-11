@@ -2,13 +2,17 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { defaultScenario, DEFAULT_CONDITION_LIBRARY, DEFAULT_RULE_LIBRARY } from '../data/srd';
 import {
   AI_DRAFTS_KEY,
+  deleteCombatantTemplate,
   duplicateConditionPreset,
   duplicateRuleTemplate,
   exportFullBundle,
   importFullBundle,
   importScenario,
+  loadCombatantTemplates,
+  mergeTemplateLibrary,
   removeConditionPreset,
   removeRuleTemplate,
+  saveCombatantTemplate,
   upsertConditionPreset,
   upsertRuleTemplate,
   type AIDraft,
@@ -130,6 +134,35 @@ describe('conditions library CRUD', () => {
     const afterRemove = removeConditionPreset(withCopy, 'condpre-test');
     expect(afterRemove.conditionLibrary.some((p) => p.id === 'condpre-test')).toBe(false);
     expect(afterRemove.conditionLibrary).toHaveLength(startCount + 1);
+  });
+});
+
+describe('persistent combatant template library', () => {
+  beforeEach(() => {
+    installLocalStorage();
+  });
+
+  it('saves a combatant with its actions/weapons and applies it into an empty scenario', () => {
+    const scenario = defaultScenario();
+    const source = scenario.combatants.find((c) => c.side === 'pc' && c.actionIds.length > 0)!;
+
+    const saved = saveCombatantTemplate(scenario, source, 'My Hero');
+    expect(saved).toHaveLength(1);
+    expect(loadCombatantTemplates()).toHaveLength(1);
+    const tpl = saved[0];
+    expect(tpl.name).toBe('My Hero');
+    expect(tpl.actions.map((a) => a.id).sort()).toEqual([...source.actionIds].sort());
+
+    // Applying into an empty scenario brings the referenced actions along.
+    const empty = { ...defaultScenario(), combatants: [], actions: [], weapons: [] };
+    const merged = mergeTemplateLibrary(empty, tpl);
+    for (const id of source.actionIds) {
+      expect(merged.actions.some((a) => a.id === id)).toBe(true);
+    }
+
+    const remaining = deleteCombatantTemplate(tpl.id);
+    expect(remaining).toHaveLength(0);
+    expect(loadCombatantTemplates()).toHaveLength(0);
   });
 });
 

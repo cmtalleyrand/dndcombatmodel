@@ -8,6 +8,7 @@ import type {
   RuleTemplate,
   Scenario,
   ScriptPreset,
+  Side,
   TargetList,
   Weapon,
 } from '../engine/types';
@@ -16,8 +17,23 @@ import { SRD_WEAPONS } from '../data/weapons';
 
 const STORAGE_KEY = 'dnd-combat-sim:scenario:v1';
 const PRESETS_KEY = 'dnd-combat-sim:presets:v1';
+const COMBATANT_TEMPLATES_KEY = 'dnd-combat-sim:combatant-templates:v1';
 export const AI_DRAFTS_KEY = 'dnd-combat-sim:ai-drafts:v1';
 export const BUNDLE_VERSION = 1;
+
+/**
+ * A reusable combatant saved to a cross-scenario library. Bundles the combatant plus the
+ * actions and weapons it references, so it can be dropped into any scenario (even an empty one)
+ * without dangling references.
+ */
+export interface CombatantTemplate {
+  id: string;
+  name: string;
+  side: Side;
+  combatant: Combatant;
+  actions: Action[];
+  weapons: Weapon[];
+}
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -230,6 +246,65 @@ export function deletePreset(id: string): ScriptPreset[] {
     // ignore
   }
   return next;
+}
+
+// --- persistent, cross-scenario combatant template library ---
+
+export function loadCombatantTemplates(): CombatantTemplate[] {
+  try {
+    const raw = localStorage.getItem(COMBATANT_TEMPLATES_KEY);
+    if (raw) return JSON.parse(raw) as CombatantTemplate[];
+  } catch {
+    // ignore corrupt storage
+  }
+  return [];
+}
+
+function persistCombatantTemplates(list: CombatantTemplate[]): CombatantTemplate[] {
+  try {
+    localStorage.setItem(COMBATANT_TEMPLATES_KEY, JSON.stringify(list));
+  } catch {
+    // quota errors are non-fatal
+  }
+  return list;
+}
+
+/** Save a combatant (with its referenced actions + weapons) to the library. */
+export function saveCombatantTemplate(scenario: Scenario, combatant: Combatant, name?: string): CombatantTemplate[] {
+  const actions = scenario.actions.filter((a) => combatant.actionIds.includes(a.id));
+  const weaponIds = new Set(actions.map((a) => a.weaponId).filter((id): id is string => Boolean(id)));
+  const weapons = scenario.weapons.filter((w) => weaponIds.has(w.id));
+  const template: CombatantTemplate = {
+    id: genId('ctmpl'),
+    name: (name ?? combatant.name).trim() || combatant.name,
+    side: combatant.side,
+    combatant: deepClone(combatant),
+    actions: deepClone(actions),
+    weapons: deepClone(weapons),
+  };
+  return persistCombatantTemplates([...loadCombatantTemplates(), template]);
+}
+
+export function deleteCombatantTemplate(id: string): CombatantTemplate[] {
+  return persistCombatantTemplates(loadCombatantTemplates().filter((t) => t.id !== id));
+}
+
+/**
+ * Merge a template's actions/weapons into the scenario (skipping ids already present) so the
+ * caller can then add a fresh-id copy of the combatant with all references intact.
+ */
+export function mergeTemplateLibrary(scenario: Scenario, template: CombatantTemplate): Scenario {
+  const haveActions = new Set(scenario.actions.map((a) => a.id));
+  const haveWeapons = new Set(scenario.weapons.map((w) => w.id));
+  return {
+    ...scenario,
+    actions: [...scenario.actions, ...template.actions.filter((a) => !haveActions.has(a.id))],
+    weapons: [...scenario.weapons, ...template.weapons.filter((w) => !haveWeapons.has(w.id))],
+  };
+}
+
+function deepClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 // ---- AI drafts (stored separately from the scenario) ----
