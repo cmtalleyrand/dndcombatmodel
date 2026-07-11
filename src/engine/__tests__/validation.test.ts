@@ -35,4 +35,18 @@ describe('validateScenarioReadiness', () => {
     expect(result.isReady).toBe(false);
     expect(result.errors.map((e) => e.code)).toEqual(expect.arrayContaining(['missing-rule-action', 'missing-rule-target-list']));
   });
+
+  it('reports missing and orphaned feature bindings', () => {
+    const hero = combatant('hero', 'pc');
+    hero.featureIds = ['missing-feature'];
+    const result = validateScenarioReadiness(scenario({
+      combatants: [hero, combatant('goblin', 'monster')],
+      features: [{ id: 'unused-feature', name: 'Unused Feature', timing: 'precombat' }],
+    }));
+
+    expect(result.isReady).toBe(false);
+    expect(result.errors.map((e) => e.code)).toContain('missing-combatant-feature');
+    expect(result.warnings.map((e) => e.code)).toContain('orphaned-feature');
+  });
+
 });

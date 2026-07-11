@@ -1,6 +1,6 @@
 // The simulation driver: initiative, round loop, turn resolution, and a single-run record.
 
-import { consumeExtraActionFeature, dropConcentration, performAction, performTacticalDecision } from './actions';
+import { applyTimedFeatures, consumeExtraActionFeature, dropConcentration, performAction, performTacticalDecision } from './actions';
 import { CONDITION_CATALOG } from './conditions';
 import { RNG, rollD20, rollDice, deriveSeed } from './dice';
 import type { LogEvent, TurnFrame, CombatantSnapshot } from './log';
@@ -211,9 +211,12 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
   for (const c of state.combatants) damageByRound[c.base.id] = [];
 
   const frames: TurnFrame[] = [];
+  const precombatStart = events.length;
+  for (const c of state.combatants) applyTimedFeatures(state, rng, c, 'precombat', events);
+
   if (recordFrames) {
-    // Frame 0: pre-combat setup — starting positions and full HP.
-    frames.push({ index: 0, round: 0, actorId: null, events: [], snapshot: snapshotState(state) });
+    // Frame 0: pre-combat setup — after opening feature effects.
+    frames.push({ index: 0, round: 0, actorId: null, events: events.slice(precombatStart), snapshot: snapshotState(state) });
   }
 
   let winner: Side | 'draw' = 'draw';
@@ -259,6 +262,7 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
       // Conditions tick at the start of the bearer's turn: durations applied during
       // other combatants' turns (e.g. Dodge, Sleep) last a full round before resolving.
       tickConditions(state, actor, events);
+      applyTimedFeatures(state, rng, actor, 'startOfTurn', events);
 
       if (!canAct(actor)) {
         events.push({

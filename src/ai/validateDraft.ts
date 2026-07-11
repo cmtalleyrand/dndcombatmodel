@@ -224,6 +224,15 @@ export function validateDraft(draft: AIScenarioDraft): string[] {
     if (!combatantNames.has(policy.actorName)) errors.push(`Tactical policy references unknown combatant: ${policy.actorName}`);
   }
 
+  const declaredFeatureSources = new Set((draft.featureDecompositions ?? []).map((feature) => norm(feature.sourceName)));
+  for (const combatant of [...draft.pcs, ...draft.enemies]) {
+    for (const featureName of combatant.declaredFeatureNames ?? []) {
+      if (!declaredFeatureSources.has(norm(featureName))) {
+        errors.push(`Combatant "${combatant.name}" declares unknown feature: ${featureName}`);
+      }
+    }
+  }
+
   const consumedFeatureNames = new Set<string>();
   const consume = (sourceName: string | undefined) => { if (sourceName) consumedFeatureNames.add(norm(sourceName)); };
   (draft.passiveTraits ?? []).forEach((item) => consume(item.sourceName));

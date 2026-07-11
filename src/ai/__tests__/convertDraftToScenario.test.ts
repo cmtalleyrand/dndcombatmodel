@@ -99,4 +99,25 @@ describe('convertDraftToScenario', () => {
     ]));
     expect(() => convertDraftToScenario(invalid)).toThrow(/Missing action/);
   });
+
+  it('maps AI start-of-combat and start-of-turn effects to engine features', () => {
+    const draft: AIScenarioDraft = {
+      ...baseDraft,
+      pcs: [{ ...baseDraft.pcs[0], declaredFeatureNames: ['Opening Ward', 'Turn Aura'] }],
+      featureDecompositions: [
+        { sourceName: 'Opening Ward', category: 'triggeredEffect', simulatorRepresentation: 'precombat effect', triggerTiming: 'startOfCombat', resourceCost: 'none', stackingBehavior: 'applies once' },
+        { sourceName: 'Turn Aura', category: 'triggeredEffect', simulatorRepresentation: 'start turn effect', triggerTiming: 'startOfTurn', resourceCost: 'none', stackingBehavior: 'applies each turn' },
+      ],
+      triggeredEffects: [
+        { name: 'Opening Ward', sourceName: 'Opening Ward', timing: 'startOfCombat', simulatorRepresentation: 'precombat effect' },
+        { name: 'Turn Aura', sourceName: 'Turn Aura', timing: 'startOfTurn', simulatorRepresentation: 'start turn effect' },
+      ],
+    };
+
+    const scenario = convertDraftToScenario(draft);
+
+    expect(scenario.features?.map((feature) => feature.timing)).toEqual(['precombat', 'startOfTurn']);
+    expect(scenario.combatants[0].featureIds).toEqual(scenario.features?.map((feature) => feature.id));
+  });
+
 });
