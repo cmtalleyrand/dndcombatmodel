@@ -19,10 +19,11 @@ import {
   AI_GENERATION_SYSTEM_PROMPT,
   buildGenerationUserPrompt,
   buildRevisionUserPrompt,
-  buildValidationRepairUserPrompt,
+  buildIncrementalRepairUserPrompt,
   formatApprovalTemplate,
 } from '../ai/schemaPrompt';
 import { validateDraft } from '../ai/validateDraft';
+import { repairDraftLoop, type DraftPatch } from '../ai/repairDraft';
 import {
   ANTHROPIC_MODELS,
   OPENAI_MODELS,
@@ -188,17 +189,26 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
         onPhase: setPhase,
       });
       let typedDraft = draft as AIScenarioDraft;
-      let semanticRepaired = false;
       let issues = validateDraft(typedDraft);
+      let semanticRepaired = false;
       if (issues.length > 0) {
-        const repairPrompt = buildValidationRepairUserPrompt(JSON.stringify(typedDraft, null, 2), issues);
-        const repairedResult = await generateDraftJson(settings, AI_GENERATION_SYSTEM_PROMPT, repairPrompt, {
-          onChunk: setStreamPreview,
-          onPhase: setPhase,
-        });
-        typedDraft = repairedResult.draft as AIScenarioDraft;
-        issues = validateDraft(typedDraft);
-        semanticRepaired = true;
+        // Incremental, bounded repair: ask only for the items that change and merge them in,
+        // instead of redrafting the whole JSON each round (which looped and regressed good parts).
+        const result = await repairDraftLoop(
+          typedDraft,
+          validateDraft,
+          async (current, currentIssues) => {
+            const patchPrompt = buildIncrementalRepairUserPrompt(JSON.stringify(current, null, 2), currentIssues);
+            const patchResult = await generateDraftJson(settings, AI_GENERATION_SYSTEM_PROMPT, patchPrompt, {
+              onChunk: setStreamPreview,
+              onPhase: setPhase,
+            });
+            return patchResult.draft as DraftPatch;
+          },
+        );
+        typedDraft = result.draft;
+        issues = result.issues;
+        semanticRepaired = result.attempts > 0;
       }
       applyParsedDraft(typedDraft);
       const prefix = repaired || semanticRepaired ? `Draft ${successVerb} (automatic ${[repaired ? 'JSON' : '', semanticRepaired ? 'semantic' : ''].filter(Boolean).join(' + ')} fix attempted). ` : `Draft ${successVerb}. `;

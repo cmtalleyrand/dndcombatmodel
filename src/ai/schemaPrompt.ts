@@ -199,11 +199,19 @@ export function buildRevisionUserPrompt(currentDraftJson: string, instructions: 
   return `Here is the current draft JSON:\n${currentDraftJson}\n\nRevise it per these instructions, keeping everything else the same unless the instructions imply otherwise:\n${instructions.trim()}\n\nRespond with the complete, updated JSON object only.`;
 }
 
-/** User-turn prompt asking the model to fix JSON it returned that failed to parse. */
-export function buildValidationRepairUserPrompt(currentDraftJson: string, validationErrors: string[]): string {
-  return `The draft JSON parsed, but failed simulator validation with these issues:
-${validationErrors.map((error) => `- ${error}`).join('\n')}\n\nHere is the current draft JSON:
-${currentDraftJson}\n\nRevise it to fix every issue. Preserve the encounter intent. Decompose pseudo-actions into base actions plus modifiers/resources/policies. Return the complete, updated JSON object only.`;
+/**
+ * Ask the model for a minimal PATCH that fixes the listed issues, rather than a full redraft.
+ * The app merges the returned items into the existing draft by identity, so unchanged content is
+ * kept verbatim — this is what stops the slow, regression-prone full-redraft loop.
+ */
+export function buildIncrementalRepairUserPrompt(currentDraftJson: string, validationErrors: string[]): string {
+  return `The current draft failed simulator validation with these issues:
+${validationErrors.map((error) => `- ${error}`).join('\n')}
+
+Here is the current draft JSON for reference — do NOT return the whole thing:
+${currentDraftJson}
+
+Return ONLY a JSON object containing the sections and items that must CHANGE to fix these issues. Reuse the exact identifying keys so each returned item REPLACES the matching one (actions/combatants/resources/etc. by "name"; feature decompositions by "sourceName"; priority-script rules by "actorName" + "priority"; tactical policies by "actorName" + "sourceName"); brand-new items are appended. Omit every section and item that does not change — do not restate unchanged actions, combatants, or scripts. Output only the JSON object.`;
 }
 
 export function buildRepairUserPrompt(brokenText: string, parseError: string): string {
