@@ -4,6 +4,7 @@ import { InfoHint } from './InfoHint';
 import { useDialogs } from './Dialogs';
 import type { AIScenarioDraft } from '../ai/types';
 import { convertDraftToScenario } from '../ai/convertDraftToScenario';
+import { DraftPreview } from './DraftPreview';
 import {
   AI_AUTHORING_SCHEMA_PROMPT,
   AI_GENERATION_SYSTEM_PROMPT,
@@ -126,6 +127,8 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
   const [streamPreview, setStreamPreview] = useState('');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [settings, setSettings] = useState<AISettings>(() => loadAISettings());
+  const [previewMode, setPreviewMode] = useState<'cards' | 'text'>('cards');
+  const [showRawJson, setShowRawJson] = useState(false);
 
   // Live "still working" feedback: a ticking clock while a request is in flight,
   // since encounter drafts can take a while to fully generate.
@@ -343,66 +346,105 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
         </div>
       </div>
 
-      <div className="grid-2" style={{ marginTop: '1rem' }}>
-        <div className="card">
-          <div className="row spread">
-            <h3>Chat-style prompt</h3>
-            <button type="button" className="ghost mini" onClick={useTemplate} disabled={busy}>Use template</button>
-          </div>
-          <label style={{ width: '100%' }}>
-            Describe PCs, enemies, spells, actions, scripts, positioning, and goals
-            <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Example: Four level-3 PCs ambush two ogres at 60 feet. Wizard prioritizes Sleep, fighter protects the cleric..." />
-          </label>
-          <div className="row" style={{ marginTop: '0.75rem' }}>
-            <button onClick={generateDraft} disabled={busy}>
-              {hasKey ? 'Generate draft' : 'Generate local draft'}
-            </button>
-            <button className="secondary" onClick={reviseDraft} disabled={busy}>Revise draft</button>
-            <button disabled={errors.length > 0 || busy} onClick={approve}>Approve and apply</button>
-            <button className="danger" onClick={discard} disabled={busy}>Discard draft</button>
-          </div>
-
-          {busy && (
-            <div className="ai-live">
-              <div className="row spread">
-                <span className="muted">
-                  {phase === 'repairing' ? 'Response had invalid JSON — asking the model to fix it…' : 'Streaming response…'}
-                </span>
-                <span className="muted">{(elapsedMs / 1000).toFixed(1)}s · {streamPreview.length.toLocaleString()} chars</span>
-              </div>
-              <pre className="ai-live-text">{streamPreview || 'Waiting for the first tokens…'}</pre>
-            </div>
-          )}
-          {message && <div className="muted" style={{ marginTop: '0.75rem', whiteSpace: 'pre-wrap' }}>{message}</div>}
+      {/* Prompt sits above the preview (full width) so the description you write and
+          the encounter it produces read top-to-bottom, not squeezed side-by-side. */}
+      <div className="card" style={{ marginTop: '1rem' }}>
+        <div className="row spread">
+          <h3>Describe your encounter</h3>
+          <button type="button" className="ghost mini" onClick={useTemplate} disabled={busy}>Use template</button>
+        </div>
+        <label style={{ width: '100%' }}>
+          PCs (class, level, key abilities), monsters (type, key abilities), encounter distance, tactics, and goals
+          <textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder={'Example: 4 PCs — Wizard 5 (INT 18, Fireball/Firebolt), Fighter 5 (STR 18, Longbow), Cleric 5 (WIS 16, Cure Wounds), Rogue 5 (DEX 18, Sneak Attack). Vs 2 Ogres (CR 2, Greatclub). Start 60 ft apart. Wizard opens with Fireball, cleric heals anyone below 50%.'}
+            style={{ minHeight: '7rem' }}
+          />
+        </label>
+        <div className="row" style={{ marginTop: '0.75rem' }}>
+          <button onClick={generateDraft} disabled={busy}>
+            {hasKey ? 'Generate draft' : 'Generate local draft'}
+          </button>
+          <button className="secondary" onClick={reviseDraft} disabled={busy}>Revise draft</button>
+          <button disabled={errors.length > 0 || busy} onClick={approve}>Approve and apply</button>
+          <button className="danger" onClick={discard} disabled={busy}>Discard draft</button>
         </div>
 
-        <div className="card">
+        {busy && (
+          <div className="ai-live">
+            <div className="row spread">
+              <span className="muted">
+                {phase === 'repairing' ? 'Response had invalid JSON — asking the model to fix it…' : 'Streaming response…'}
+              </span>
+              <span className="muted">{(elapsedMs / 1000).toFixed(1)}s · {streamPreview.length.toLocaleString()} chars</span>
+            </div>
+            <pre className="ai-live-text">{streamPreview || 'Waiting for the first tokens…'}</pre>
+          </div>
+        )}
+        {message && <div className="muted" style={{ marginTop: '0.75rem', whiteSpace: 'pre-wrap' }}>{message}</div>}
+      </div>
+
+      {/* Approval preview: the draft rendered as the same stat cards the editors show,
+          so you approve what you can actually see — not a wall of JSON. */}
+      <div className="card" style={{ marginTop: '1rem' }}>
+        <div className="row spread">
           <h3>
             Approval preview{' '}
             <span className="muted" style={{ fontWeight: 400, fontSize: '0.8rem' }}>
-              easy-read view — give written feedback in the prompt box and click Revise
+              what Approve will apply — give feedback in the box above and click Revise
             </span>
           </h3>
+          <div className="row">
+            <div className="seg-toggle" role="group" aria-label="Preview format">
+              <button
+                type="button"
+                className={previewMode === 'cards' ? 'active' : ''}
+                onClick={() => setPreviewMode('cards')}
+              >
+                Cards
+              </button>
+              <button
+                type="button"
+                className={previewMode === 'text' ? 'active' : ''}
+                onClick={() => setPreviewMode('text')}
+              >
+                Text
+              </button>
+            </div>
+            <span
+              className="tag"
+              style={errors.length === 0 ? { color: 'var(--good)', borderColor: 'var(--good)' } : { color: 'var(--danger-soft)', borderColor: 'var(--danger)' }}
+            >
+              {errors.length === 0 ? 'Valid' : `${errors.length} issue(s)`}
+            </span>
+          </div>
+        </div>
+
+        {previewMode === 'cards' ? (
+          parsedDraft ? (
+            <DraftPreview draft={parsedDraft} />
+          ) : (
+            <div className="muted" style={{ marginTop: '0.75rem' }}>
+              Draft JSON is not parseable — switch to Text or fix the raw JSON below.
+            </div>
+          )
+        ) : (
           <textarea
             readOnly
             value={parsedDraft ? formatApprovalTemplate(parsedDraft) : approvalTemplate}
-            style={{ minHeight: '18rem' }}
+            style={{ minHeight: '18rem', marginTop: '0.75rem' }}
           />
-        </div>
-      </div>
+        )}
 
-      <div className="card" style={{ marginTop: '1rem' }}>
-        <div className="row spread">
-          <h3>Typed draft data <span className="muted" style={{ fontWeight: 400, fontSize: '0.8rem' }}>(source of truth — this is what Approve applies)</span></h3>
-          <span
-            className="tag"
-            style={errors.length === 0 ? { color: 'var(--good)', borderColor: 'var(--good)' } : { color: 'var(--danger-soft)', borderColor: 'var(--danger)' }}
-          >
-            {errors.length === 0 ? 'Valid' : `${errors.length} issue(s)`}
-          </span>
-        </div>
-        <textarea value={draftText} onChange={(event) => setDraftText(event.target.value)} style={{ minHeight: '22rem' }} />
-        {errors.length > 0 && <pre style={{ color: 'var(--danger-soft)', whiteSpace: 'pre-wrap' }}>{errors.join('\n')}</pre>}
+        {errors.length > 0 && (
+          <pre style={{ color: 'var(--danger-soft)', whiteSpace: 'pre-wrap', marginTop: '0.75rem' }}>{errors.join('\n')}</pre>
+        )}
+
+        <details className="draft-raw" open={showRawJson} onToggle={(e) => setShowRawJson((e.target as HTMLDetailsElement).open)}>
+          <summary>Advanced: edit raw draft JSON <span className="muted">(source of truth — this is exactly what Approve applies)</span></summary>
+          <textarea value={draftText} onChange={(event) => setDraftText(event.target.value)} style={{ minHeight: '20rem', marginTop: '0.5rem' }} />
+        </details>
       </div>
     </div>
   );

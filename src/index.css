@@ -792,6 +792,143 @@ td.num, th.num {
   word-break: break-word;
 }
 
+/* ── AI draft preview (card-based approval view) ────────── */
+.seg-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.seg-toggle button {
+  background: var(--bg-2);
+  border: none;
+  border-radius: 0;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.seg-toggle button + button {
+  border-left: 1px solid var(--border);
+}
+.seg-toggle button.active {
+  background: var(--panel-3);
+  color: var(--gold-bright);
+  font-weight: 600;
+}
+
+.draft-preview {
+  margin-top: 0.75rem;
+}
+.draft-overview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.draft-summary {
+  font-family: 'Cinzel', Georgia, serif;
+  font-size: 0.95rem;
+  color: var(--text);
+  min-width: 0;
+}
+.draft-facts {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.draft-section {
+  margin-top: 1rem;
+}
+.draft-cards {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.draft-abilities {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.4rem;
+}
+.draft-ability {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 0.35rem 0.2rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.draft-ability-label {
+  font-size: 0.64rem;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+.draft-ability-score {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.draft-ability-mod {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.draft-defenses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+.draft-block-title {
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  font-weight: 700;
+}
+.draft-rule {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 0.82rem;
+}
+.draft-rule:last-child { border-bottom: none; }
+.draft-rule-body { min-width: 0; }
+.draft-assumptions {
+  margin-top: 1rem;
+  padding: 0.6rem 0.85rem;
+  background: rgba(205, 163, 73, 0.06);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.draft-assumptions ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.draft-raw {
+  margin-top: 1rem;
+}
+.draft-raw > summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--muted);
+  user-select: none;
+}
+
 /* ── Big stats ──────────────────────────────────────────── */
 .stat-big {
   font-family: 'Cinzel', Georgia, serif;
@@ -1358,6 +1495,7 @@ td.num, th.num {
   .app { padding: 1rem 0.85rem 3rem; }
   .grid-2 { grid-template-columns: 1fr; }
   .ability-grid { grid-template-columns: repeat(3, 1fr); }
+  .draft-abilities { grid-template-columns: repeat(3, 1fr); }
   header.app-header h1 { font-size: 1.25rem; }
   header.app-header { padding: 1rem; }
   .dmg-name { width: 5rem; }
