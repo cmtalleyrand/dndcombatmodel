@@ -7,7 +7,48 @@ import {
   spellSaveDC,
   spellMod,
 } from '../engine/derive';
-import type { Action, Combatant, Weapon } from '../engine/types';
+import type { Action, Combatant, Feature, Weapon } from '../engine/types';
+
+const FEATURE_TIMING_LABELS: Record<Feature['timing'], string> = {
+  precombat: 'Before combat',
+  startOfTurn: 'Start of turn',
+  beforeAttackRoll: 'Before attack roll',
+  afterAttackRollBeforeHitResolution: 'After a near-miss',
+  onHit: 'On hit',
+  actionEconomy: 'Action economy',
+};
+
+const FEATURE_TRIGGER_LABELS: Record<string, string> = {
+  always: '',
+  hasAdvantage: 'with advantage',
+  advantageOrAllyAdjacent: 'with advantage or an adjacent ally',
+  targetHasCondition: 'vs a target with',
+  selfHasCondition: 'while',
+};
+
+/** One-line human summary of a feature's effect, for the library and combatant cards. */
+export function describeFeature(feature: Feature): string {
+  const parts: string[] = [];
+  if (feature.attackModifier) {
+    const m = feature.attackModifier;
+    const bits = [m.toHit ? `${sign(m.toHit)} to hit` : '', m.damage ? `${sign(m.damage)} damage` : ''].filter(Boolean);
+    if (bits.length) parts.push(bits.join(', '));
+  }
+  for (const ex of feature.extraDamage ?? []) {
+    parts.push(`+${ex.dice ?? ex.flat ?? 0} ${ex.type}`);
+  }
+  for (const app of feature.applyConditions ?? []) parts.push(`applies ${app.kind}`);
+  if (feature.extraAction) parts.push(`+${feature.extraAction.count} ${feature.extraAction.cost ?? 'action'}(s)`);
+
+  let effect = parts.join('; ') || 'no direct effect';
+  if (feature.condition && feature.condition.trigger !== 'always') {
+    const lbl = FEATURE_TRIGGER_LABELS[feature.condition.trigger] ?? '';
+    const cond = feature.condition.condition ? ` ${feature.condition.condition}` : '';
+    effect += ` (${lbl}${cond}${feature.condition.meleeOnly ? ', melee only' : ''})`;
+  }
+  if (feature.oncePerTurn) effect += ', once/turn';
+  return `${FEATURE_TIMING_LABELS[feature.timing]}: ${effect}`;
+}
 
 function sign(n: number): string {
   return n >= 0 ? `+${n}` : `${n}`;

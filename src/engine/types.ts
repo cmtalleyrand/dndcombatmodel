@@ -246,9 +246,42 @@ export interface ExtraActionEffect {
   cost?: ActionCost;
 }
 
+/**
+ * Where a feature comes from — a logical classification for organising the feature library.
+ * Mutually exclusive and keyed to how 5e content is sourced, so the library can group by it.
+ */
+export type FeatureCategory =
+  | 'classFeature' // a class or subclass ability (Sneak Attack, Rage, Action Surge, Divine Smite)
+  | 'speciesTrait' // a species/lineage trait (Relentless Endurance, Breath Weapon)
+  | 'feat' // a feat (Sharpshooter, Great Weapon Master, Sentinel)
+  | 'monsterTrait' // an innate monster ability (Pack Tactics, Regeneration, Multiattack)
+  | 'spellEffect' // an ongoing effect granted by a spell (Hunter's Mark, Bless, Hex)
+  | 'itemEffect'; // an effect granted by a magic item
+
+export const FEATURE_CATEGORIES: FeatureCategory[] = [
+  'classFeature',
+  'speciesTrait',
+  'feat',
+  'monsterTrait',
+  'spellEffect',
+  'itemEffect',
+];
+
+/** Human-readable labels for each feature category. */
+export const FEATURE_CATEGORY_LABELS: Record<FeatureCategory, string> = {
+  classFeature: 'Class feature',
+  speciesTrait: 'Species trait',
+  feat: 'Feat',
+  monsterTrait: 'Monster trait',
+  spellEffect: 'Spell effect',
+  itemEffect: 'Item effect',
+};
+
 export interface Feature {
   id: string;
   name: string;
+  /** logical classification for grouping the feature library. */
+  category?: FeatureCategory;
   timing: FeatureTiming;
   resource?: ResourcePoolDefinition;
   spend?: FeatureResourceSpend;

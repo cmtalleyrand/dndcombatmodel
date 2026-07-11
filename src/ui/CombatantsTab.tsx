@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ABILITIES, type Ability, type Combatant, type Scenario, type Side, type Skill } from '../engine/types';
+import { ABILITIES, FEATURE_CATEGORY_LABELS, type Ability, type Combatant, type Scenario, type Side, type Skill } from '../engine/types';
 import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS, SRD_ACTIONS } from '../data/srd';
 import {
   copyScript,
@@ -17,7 +17,7 @@ import { SRD_WEAPONS } from '../data/weapons';
 import { defaultPosition } from '../engine/state';
 import { RuleBuilder } from './RuleBuilder';
 import { useDialogs } from './Dialogs';
-import { describeAction } from './describe';
+import { describeAction, describeFeature } from './describe';
 import { InfoHint } from './InfoHint';
 import { HeartIcon, ShieldHalfIcon, TrashIcon, pickCombatantIcon } from './icons';
 import { NumberInput } from './NumberInput';
@@ -511,6 +511,40 @@ function CombatantCard({
               })}
           </div>
 
+          {(scenario.features ?? []).length > 0 && (
+            <div className="section">
+              <div className="section-title">
+                Features
+                <InfoHint>
+                  Class features, feats, traits, and spell effects from the library (Action
+                  Library tab). Tick the ones this combatant has.
+                </InfoHint>
+              </div>
+              {(scenario.features ?? []).map((f) => {
+                const checked = combatant.featureIds?.includes(f.id) ?? false;
+                return (
+                  <div className="action-line" key={f.id}>
+                    <label className="check-inline">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const set = new Set(combatant.featureIds ?? []);
+                          if (e.target.checked) set.add(f.id);
+                          else set.delete(f.id);
+                          update({ featureIds: [...set] });
+                        }}
+                      />
+                      {f.name}
+                      {f.category && <span className="tag" style={{ marginLeft: 6 }}>{FEATURE_CATEGORY_LABELS[f.category]}</span>}
+                    </label>
+                    {checked && <span className="derived">{describeFeature(f)}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div className="section">
             <div className="section-title">Priority Script</div>
             {otherSameSide.length > 0 && (
@@ -529,7 +563,7 @@ function CombatantCard({
                 </select>
               </div>
             )}
-            <RuleBuilder combatant={combatant} scenario={scenario} onChange={(script) => update({ script })} />
+            <RuleBuilder combatant={combatant} scenario={scenario} setScenario={setScenario} onChange={(script) => update({ script })} />
           </div>
         </div>
       )}

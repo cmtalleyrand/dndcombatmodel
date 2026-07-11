@@ -27,6 +27,8 @@ export interface AggregateStats {
   combatants: CombatantStats[];
   /** one representative run (the first) for the per-round narrative. */
   sampleRun: RunResult;
+  /** the run that went worst for the party, re-recorded with frames for replay. */
+  worstRun: RunResult;
 }
 
 export interface MonteCarloResult {
@@ -57,7 +59,24 @@ export function runMany(scenario: Scenario, simulations: number, baseSeed: numbe
     // per-turn frames for the animated replay — the rest stay light.
     runs.push(runSimulation(scenario, deriveSeed(baseSeed, i), i === 0));
   }
-  return { runs, stats: aggregate(scenario, runs) };
+  const stats = aggregate(scenario, runs);
+
+  // Identify the run that went worst for the party (loss first, then fewest surviving PCs,
+  // then lowest total PC ending HP) and re-run its seed with frames on — deterministic, so
+  // it reproduces exactly and gives an animatable "worst case" replay without recording all runs.
+  const pcIds = new Set(scenario.combatants.filter((c) => c.side === 'pc').map((c) => c.id));
+  const partyScore = (r: RunResult): number => {
+    const pcOutcomes = r.outcomes.filter((o) => pcIds.has(o.id));
+    const survivors = pcOutcomes.filter((o) => o.survived).length;
+    const endHp = pcOutcomes.reduce((s, o) => s + Math.max(0, o.endHp), 0);
+    const winRank = r.winner === 'monster' ? 0 : r.winner === 'draw' ? 1 : 2;
+    return winRank * 1e9 + survivors * 1e6 + endHp; // lower = worse for the party
+  };
+  let worstIdx = 0;
+  for (let i = 1; i < runs.length; i++) if (partyScore(runs[i]) < partyScore(runs[worstIdx])) worstIdx = i;
+  stats.worstRun = worstIdx === 0 ? runs[0] : runSimulation(scenario, deriveSeed(baseSeed, worstIdx), true);
+
+  return { runs, stats };
 }
 
 export function aggregate(scenario: Scenario, runs: RunResult[]): AggregateStats {
@@ -121,5 +140,7 @@ export function aggregate(scenario: Scenario, runs: RunResult[]): AggregateStats
     avgRounds: totalRounds / n,
     combatants,
     sampleRun: runs[0],
+    // default; runMany replaces this with the actual worst-for-party run (with frames).
+    worstRun: runs[0],
   };
 }

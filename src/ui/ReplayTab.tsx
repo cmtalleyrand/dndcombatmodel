@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Scenario } from '../engine/types';
 import type { AggregateStats } from '../engine/statistics';
 import { CombatReplay } from './CombatReplay';
@@ -11,8 +12,9 @@ interface Props {
 }
 
 export function ReplayTab({ scenario, stats, statsStale, onGoToRun }: Props) {
-  const sample = stats?.sampleRun;
-  const hasReplay = !!sample && sample.frames.length > 1;
+  const [which, setWhich] = useState<'representative' | 'worst'>('representative');
+  const run = stats ? (which === 'worst' ? stats.worstRun : stats.sampleRun) : undefined;
+  const hasReplay = !!run && run.frames.length > 1;
 
   return (
     <div className="panel">
@@ -20,11 +22,17 @@ export function ReplayTab({ scenario, stats, statsStale, onGoToRun }: Props) {
         <h2>
           Combat Replay
           <InfoHint>
-            A turn-by-turn animation of one representative run on the linear battlefield. Tokens
-            slide as combatants move; health bars fall as blows land.
+            A turn-by-turn animation on the linear battlefield. Tokens slide as combatants move;
+            health bars fall as blows land. Switch between a representative run and the run that
+            went worst for the party.
           </InfoHint>
         </h2>
-        {hasReplay && <span className="tag">representative simulation</span>}
+        {stats && (
+          <div className="row" role="group" aria-label="Which run to replay">
+            <button className={which === 'representative' ? '' : 'secondary'} onClick={() => setWhich('representative')}>Representative</button>
+            <button className={which === 'worst' ? '' : 'secondary'} onClick={() => setWhich('worst')} title="The simulation that went worst for the party">Worst for party</button>
+          </div>
+        )}
       </div>
 
       {hasReplay && statsStale && (
@@ -36,9 +44,9 @@ export function ReplayTab({ scenario, stats, statsStale, onGoToRun }: Props) {
       {hasReplay ? (
         <CombatReplay
           scenario={scenario}
-          frames={sample!.frames}
-          winner={sample!.winner}
-          rounds={sample!.rounds}
+          frames={run!.frames}
+          winner={run!.winner}
+          rounds={run!.rounds}
         />
       ) : (
         <div className="replay-empty">

@@ -15,8 +15,9 @@ function statsFixture(): AggregateStats {
       { id: 'pc1', name: 'Cleric', side: 'pc', maxHp: 24, survivalRate: 0.8, avgEndHp: 12.3, avgDamageDealt: 18.1, avgDamageTaken: 22.4, avgHealingDone: 9.7, avgDamageByRound: [] },
       { id: 'm1', name: 'Ogre, "Big"', side: 'monster', maxHp: 59, survivalRate: 0.4, avgEndHp: 5.2, avgDamageDealt: 30.0, avgDamageTaken: 40.1, avgHealingDone: 0, avgDamageByRound: [] },
     ],
-    // sampleRun is unused by buildResultsCsv; cast to satisfy the type.
+    // sampleRun/worstRun are unused by buildResultsCsv; cast to satisfy the type.
     sampleRun: { winner: 'pc', rounds: 6, events: [], outcomes: [], damageByRound: {}, frames: [] } as AggregateStats['sampleRun'],
+    worstRun: { winner: 'monster', rounds: 8, events: [], outcomes: [], damageByRound: {}, frames: [] } as AggregateStats['worstRun'],
   };
 }
 

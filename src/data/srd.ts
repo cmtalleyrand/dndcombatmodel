@@ -564,6 +564,7 @@ export const SRD_FEATURES: Feature[] = [
   {
     id: 'feat-sneak-attack',
     name: 'Sneak Attack',
+    category: 'classFeature',
     timing: 'onHit',
     condition: { trigger: 'advantageOrAllyAdjacent' },
     extraDamage: [{ dice: '2d6', type: 'piercing', label: 'Sneak Attack' }],
@@ -573,6 +574,7 @@ export const SRD_FEATURES: Feature[] = [
   {
     id: 'feat-rage-damage',
     name: 'Rage Damage',
+    category: 'classFeature',
     timing: 'onHit',
     condition: { trigger: 'selfHasCondition', condition: 'raging', meleeOnly: true },
     extraDamage: [{ flat: 2, type: 'slashing', label: 'Rage Damage' }],
@@ -581,6 +583,7 @@ export const SRD_FEATURES: Feature[] = [
   {
     id: 'feat-hunters-mark',
     name: "Hunter's Mark",
+    category: 'spellEffect',
     timing: 'onHit',
     condition: { trigger: 'targetHasCondition', condition: 'marked' },
     extraDamage: [{ dice: '1d6', type: 'piercing', label: "Hunter's Mark" }],

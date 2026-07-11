@@ -205,7 +205,12 @@ export function validateDraft(draft: AIScenarioDraft): string[] {
     }
   }
 
+  const TRIGGERED_EFFECT_TIMINGS = new Set(['precombat', 'startOfCombat', 'startOfTurn', 'onHit', 'afterMiss', 'actionEconomy']);
   for (const effect of draft.triggeredEffects ?? []) {
+    if (!TRIGGERED_EFFECT_TIMINGS.has(effect.timing)) {
+      // Surface it rather than let the converter drop it silently.
+      errors.push(`Triggered effect "${effect.name}" has an unsupported timing: ${effect.timing}`);
+    }
     for (const actionName of effect.appliesToActionNames ?? []) {
       if (!actionNames.has(actionName)) errors.push(`Triggered effect "${effect.name}" references unknown base action: ${actionName}`);
     }
