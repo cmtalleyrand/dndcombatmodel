@@ -472,6 +472,8 @@ export type RuleConditionType =
   | 'roundAtMost'
   | 'notConcentrating'
   | 'anyEnemyConcentrating' // an enemy is concentrating (target it to break concentration)
+  | 'nearestEnemyWithin' // the nearest living enemy is within `value` feet (melee/kite triggers)
+  | 'nearestEnemyBeyond' // the nearest living enemy is more than `value` feet away
   | 'slotAvailable'; // requires a spell slot of the action's level
 
 export const RULE_CONDITION_TYPES: RuleConditionType[] = [
@@ -486,6 +488,8 @@ export const RULE_CONDITION_TYPES: RuleConditionType[] = [
   'roundAtMost',
   'notConcentrating',
   'anyEnemyConcentrating',
+  'nearestEnemyWithin',
+  'nearestEnemyBeyond',
   'slotAvailable',
 ];
 

@@ -102,11 +102,12 @@ interface AIDraftRule {
   priority: number; // lower fires first
   label?: string;
   // condition.type must be one of these exact strings; "value" is a percentage (0-100) for
-  // *HpBelow* conditions or a headcount for enemyCountAtLeast/AtMost; omit value/condition when unused.
+  // *HpBelow* conditions, a headcount for enemyCountAtLeast/AtMost, a round number for roundAt*,
+  // or a distance in feet for nearestEnemyWithin/nearestEnemyBeyond; omit value/condition when unused.
   condition: {
     type: 'always' | 'selfHpBelowPct' | 'anyAllyHpBelowPct' | 'enemyCountAtLeast' | 'enemyCountAtMost'
       | 'selfHasCondition' | 'anyEnemyHasCondition' | 'roundAtLeast' | 'roundAtMost' | 'notConcentrating'
-      | 'anyEnemyConcentrating' | 'slotAvailable';
+      | 'anyEnemyConcentrating' | 'nearestEnemyWithin' | 'nearestEnemyBeyond' | 'slotAvailable';
     value?: number;
     condition?: string; // condition kind for selfHasCondition/anyEnemyHasCondition, e.g. "poisoned", "frightened", "blessed"
     // Optional compound predicate: extra leaf conditions (same shape, each with its own type/value/condition)
