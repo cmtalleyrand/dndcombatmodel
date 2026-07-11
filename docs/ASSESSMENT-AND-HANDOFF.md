@@ -35,18 +35,14 @@ on-hit effects that duplicate it; those must go (§2).
   (`?? []`), so scenarios without features load and run unchanged.
 
 The model can now express what curated content needs: all `FeatureTiming` values are live,
-`Feature.condition` gates on combat state, and binding is validated. Two engine gaps still
-need closing to support §2 fully:
+`Feature.condition` gates on combat state, and binding is validated. 
 
-1. **Remove the redundant legacy paths.** `legacyActionFeatures` (`engine/actions.ts`) bridges
-   `action.extraDamage` / `action.applyConditions` into synthetic features, and `applyRiders`
-   still reads `action.riders`. Delete both once §2 has moved all content onto `Feature`s.
-2. **The AI converter drops supported timings.** `convertDraftToScenario.ts` filters
+To-do:
+
+1. **The AI converter drops supported timings.** `convertDraftToScenario.ts` filters
    `triggeredEffects` to a subset, so a model-decomposed `startOfTurn`/`startOfCombat` effect
    is discarded. Widen the filter to every timing the engine now supports and surface any
    effect it can't place instead of dropping it silently.
-
-To-do: extend `AttackModifierEffect` beyond `toHit`/`damage` (advantage, save-DC, AC).
 
 ---
 
@@ -76,10 +72,10 @@ because their feature "isn't interesting"; convert all of them.
 
 **How to work:** batch by class/monster group; after each batch run `npm run test` +
 `npm run build`, and where a conversion should be behavior-preserving confirm fixed-seed
-simulation parity. Extend `src/data/__tests__/srd.test.ts` to assert the converted features.
+simulation parity. Extend `src/data/__tests__/srd.test.ts` to assert the converted features. once complete, **remove redundant legacy paths.** `legacyActionFeatures` (`engine/actions.ts`) bridges `action.extraDamage` / `action.applyConditions` into synthetic features, and `applyRiders` should be deleted once §2 has moved all content onto `Feature`s.
 
 **Done means:** the four greps are all 0, the bridge and `applyRiders` are deleted, and every
-one of the 53 stat blocks has its 5e features implemented as `Feature`s. Nothing partial.
+one of the 53 stat blocks has its 5e features implemented as `Feature`s.
 
 ---
 
