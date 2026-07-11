@@ -88,6 +88,13 @@ migrating content onto it, or the migration will bake the inconsistencies in.
 
 Do A–D first; the migration in §2 assumes a Feature that can express what `riders` do.
 
+**Status (PR #33):** A wired — `startOfTurn` and `precombat` are now invoked in
+`simulator.ts` (`applyTimedFeatures`), `afterHit` removed. B done — `Feature.condition:
+FeatureTrigger` added. C done — `validation.ts` flags missing/orphaned features and
+`validateDraft.ts` checks `declaredFeatureNames`. **Still open:** the `legacyActionFeatures`
+bridge (`actions.ts:389,434`) has **not** been removed, so the "third path" for on-hit
+damage/conditions remains — its removal is coupled to the §2 decision below, not independent.
+
 ---
 
 ## 2. Handoff — migrate existing content onto the feature/resource system
@@ -100,70 +107,83 @@ content — without breaking old saved/imported scenarios.
 **Preconditions:** §1 items A + B landed (Feature can express combat-state triggers and
 at least `startOfTurn`). If they haven't, STOP and do them first.
 
-**Scope of existing content to convert** (`src/data/srd.ts`, ~3 `riders:` sites):
-- **Sneak Attack** (`act-rogue-shortbow`, rider `2d6` / `advantageOrAllyAdjacent`,
-  `oncePerTurn`) → a `Feature` with the equivalent trigger, bound to the Rogue via
-  `featureIds`.
-- **Rage** (`act-greataxe-rage`, `selfHasCondition: raging`, `meleeOnly`, plus the
-  physical-resistance side handled by the `raging` condition) → a `Feature`; keep the
-  condition-driven resistance as-is.
-- **Hunter's Mark / Hex** (`act-longbow-hunters-mark`, `targetHasCondition: marked`) →
-  a `Feature`.
-- **Extra Attack / Action Surge demos** — already representable via `extraAction`
-  (`actionEconomy`); ensure the Fighter carries them as features rather than the
-  `act-*-2x` `attackCount` shortcut where a feature is more faithful.
-- **Monster on-hit effects** authored via `action.applyConditions` (e.g. Ghoul paralysis)
-  → leave as-is unless §1-B unifies them; they already bridge through `legacyActionFeatures`.
+**Status — PARTIAL, do not read as done.** A prior pass (PR #34) migrated the **three
+`riders`** (Sneak Attack, Rage, Hunter's Mark) to features and bound them to three
+archetypes. Those three were *examples of the mechanism*, not the scope. The majority of the
+content is still un-migrated. An earlier version of this section listed those three cases and
+so the follow-up did roughly those three cases — that was a scoping failure in this document,
+corrected below.
 
-**Steps**
-1. Add a `features:` library to `defaultScenario()` and give each affected SRD combatant
-   `featureIds` (use `genId`/stable ids; keep names matching what the AI prompt expects so
-   AI and curated content share a vocabulary).
-2. Re-express the three riders as features; **delete the `riders` from those actions only
-   after** the feature equivalents are verified in simulation (compare aggregate
-   damage-dealt before/after on a fixed seed — should be within RNG noise, ideally
-   identical if triggers map 1:1).
-3. Back-compat: keep the engine reading `riders` (don't remove `applyRiders`) so old
-   exports still work; add nothing to `normalizeScenario` unless you remove a field.
-4. Update `src/data/__tests__/srd.test.ts` + `engine/__tests__/riders.test.ts` (or a new
-   `features.test.ts` case) to assert the migrated Rogue/Barbarian/Ranger still deal their
-   expected riders via the feature path.
-5. Update `CLAUDE.md` (the "riders" invariant note) once `riders` is deprecated.
+**Scope is a coverage predicate over ALL content, not a case list.** "Done" is defined by
+measurements that must reach a target across the whole of `src/data/srd.ts`. Drive each to
+its target; a named-ability checklist is not the scope.
 
-**Definition of done:** SRD content uses features; `npm run test` + `npm run build` pass;
-a fixed-seed run of `defaultScenario()` produces the same winner/damage distribution as
-before the migration.
+| Inventory command | Now | Target | Meaning |
+|---|---|---|---|
+| `grep -c 'riders:' src/data/srd.ts` | 0 | 0 | legacy rider path — cleared |
+| `grep -c 'applyConditions:' src/data/srd.ts` | 8 | 0 \* | on-hit conditions still authored on actions, bridged via `legacyActionFeatures` |
+| `grep -c 'extraDamage:' src/data/srd.ts` | 4 | 0 \* | extra damage packets still on actions, bridged |
+| `grep -c 'attackCount:' src/data/srd.ts` | 7 | per decision | multiattack as a shortcut vs an `extraAction` feature |
+| stat blocks carrying `featureIds` | **3 of 53** | every block with a mechanical feature | 25 class PCs + 28 monsters; almost none carry features |
+
+\* Target is 0 **only if** the design decision below is to retire the `legacyActionFeatures`
+bridge (still present, `actions.ts:389,434`). Until that decision, these sites are "working
+but not unified," not "migrated."
+
+**Gating design decision — make it before touching content.** The migration target is
+undefined until someone decides, per legacy path, *eliminate or keep*:
+- `action.applyConditions` / `action.extraDamage`: keep as first-class action properties, OR
+  move every occurrence onto features and delete `legacyActionFeatures`.
+- `attackCount` multiattack: keep as a shortcut, OR express via `extraAction`/`actionEconomy`.
+Record the decision; the coverage targets follow from it. Do not migrate some sites and leave
+the rest — a half-migrated content set is worse than either end state.
+
+**The real bulk is feature coverage across stat blocks, and it is large.** 3 of 53 combatants
+carry features. Every class PC (25) and monster (28) whose kit includes a mechanically
+relevant feature — Action Surge, Second Wind, Channel Divinity, Bardic Inspiration, Divine
+Smite, Wild Shape, pack tactics, multiattack routines, regeneration, and so on — must be
+either modeled as a feature or explicitly recorded as out-of-model with a reason. **Produce a
+per-stat-block inventory (one row per combatant × its features) first**, and treat the
+migration as complete only when every row is either implemented or accounted for. The three
+riders were the warm-up, not the work.
+
+**Method / back-compat:** keep the engine reading legacy fields (do not remove `applyRiders`
+or `legacyActionFeatures` until their grep counts are 0); migrate in reviewable batches with
+fixed-seed before/after simulation-parity checks; extend `srd.test.ts` per batch; change the
+`CLAUDE.md` invariant only when a legacy path actually reaches 0.
+
+**Definition of done:** every target in the coverage table is met **and** the per-stat-block
+feature inventory has no unaddressed rows. Not "the named abilities were handled."
 
 ---
 
 ## 3. Handoff — 2024-rules content pass
 
-**Context:** the project is *mostly* on 2024 rules (weapons carry 2024 masteries;
-commit "Wave 3: standardized on 2024") but stragglers remain in 2014 form. The decision
-is to **commit fully to 2024** and make that explicit everywhere.
+**Context:** the project is committing fully to **2024** rules and making that explicit. A
+prior pass (PR #34) converted `act-inflict-wounds` to the 2024 CON-save / 2d10 form and added
+edition markers. Inflict Wounds is **1 of 33 spell actions** — naming it as "the straggler"
+in the earlier draft was the same scoping error as §2. It is one data point, not the scope.
 
-**Documentation (do first, cheap):**
-- State "**Rules edition: D&D 2024 (rules glossary / 2024 PHB & MM)**" prominently in
-  `README.md`, `CLAUDE.md` (a new invariant line), and somewhere in-app (e.g. the
-  Initiative tab header or an `InfoHint`).
+**Documentation:** declare "**Rules edition: D&D 2024**" in `README.md`, `CLAUDE.md`, and
+in-app.
 
-**Content audit & fixes (`src/data/srd.ts`):**
-- **Known straggler:** `act-inflict-wounds` is a `spellAttack` for `3d10`
-  (`srd.ts:233-242`) — that's 2014. 2024 Inflict Wounds is **CON save, 2d10** (no attack).
-  Convert to `save: { ability: 'con' }`, `damage: '2d10'`, drop `spellAttack`.
-- **Sweep every spell** for 2014-vs-2024 deltas: attack-vs-save, dice, ranges,
-  concentration. Likely suspects to check: any healing/cantrip scaling, Hold Person,
-  Sleep (2024 changed), the save-vs-attack cantrips.
-- **Monsters:** verify stat blocks against the **2024 Monster Manual** where values
-  changed; note MM 2024 uses flat modifiers and revised HP for some CR≤3 creatures.
-- **Weapons:** already 2024 — spot-check mastery assignments only.
+**Scope is a full per-entry audit, not a suspect list.** Every spell and every monster must
+be checked against its 2024 stat block; the deliverable is a *completed audit table*, not a
+handful of fixes.
 
-**Method:** one spell/monster per commit-group with a citation comment
-(`// 2024 PHB p.xxx`), update `srd.test.ts` spot-checks to the 2024 values, keep the
-save/attack change reflected in any script that referenced the old action shape.
+| Surface | Count | Audit obligation (every entry) |
+|---|---|---|
+| spell actions (`kind: 'spell'`) | 33 | 2024 attack↔save, dice, range, duration/concentration |
+| monsters | 28 | 2024 Monster Manual: flat modifiers, revised HP/attacks, multiattack |
+| weapons | 37 | mastery assignment spot-check (already 2024) |
 
-**Definition of done:** no 2014-only mechanics remain in `srd.ts`; docs + UI declare 2024;
-tests assert 2024 values.
+Enumerate them (`grep -n "kind: 'spell'" src/data/srd.ts`; the monster factories), record a
+verdict for **every** entry (conforms / changed → what), then fix in reviewable batches with a
+citation comment and updated `srd.test.ts` assertions. An unaudited entry is not a passing
+entry — do not stop at the ones that are obviously wrong.
+
+**Definition of done:** all 33 spells and 28 monsters have a recorded 2024 verdict and every
+delta is applied; docs + UI declare 2024. Not "the known stragglers were fixed."
 
 ---
 
@@ -210,11 +230,12 @@ validate/repair → review (easy-read + JSON) → approve (replaces scenario)**.
    no merge and **no undo** — one mis-click on a populated scenario is unrecoverable
    behind a single `window.confirm`. (This is why "undo + non-native confirmation" is a
    Tier-1 fix.) Want: "merge into current" vs "replace", and undo.
-4. **Silent capability gaps.** Per §1/§2, the model can decompose features whose timings
-   the engine drops (`startOfCombat`/`startOfTurn`) or that don't bind
-   (`declaredFeatureNames` typo). From the user's chair the encounter "generates fine" but
-   plays without the feature — the worst kind of failure (silent + wrong). Want: surface
-   "N declared features were not applied" in the approval preview.
+4. **Silent capability gaps.** The converter still filters `triggeredEffects` to a subset of
+   timings (`convertDraftToScenario.ts`), so a model-decomposed effect on an unsupported
+   timing is dropped without warning even though the engine now supports more timings after
+   PR #33. Binding is now validated (`declaredFeatureNames` — PR #33), which closes the typo
+   case. From the user's chair a dropped effect still reads as "generates fine" but plays
+   without the feature. Want: surface "N declared effects were not applied" in the preview.
 5. **Discovery.** AI Authoring is the fastest way to build an encounter but sits at tab
    position 5, after all the manual editors, with no first-run pointer to it.
 6. **No cost/latency signal.** BYO-key users get an elapsed clock + streamed char count
@@ -226,9 +247,24 @@ features" warning (4) → real revise thread (2) → surface the tab earlier (5)
 
 ---
 
-## 6. Implementation status (this work stream)
+## 6. Implementation status
 
-**Delivered (committed on `claude/app-evaluation-assessment-9mb9vc`, tests + build green):**
+### Handoff sections — what later PRs actually did (mind the partials)
+- **§1 feature-system fixes (PR #33): mostly done.** Timings wired, triggers unified, binding
+  validation added. Open: `legacyActionFeatures` bridge not yet removed.
+- **§2 content migration (PR #34): PARTIAL — riders only.** 3 `riders` migrated; 8
+  `applyConditions`, 4 `extraDamage`, 7 `attackCount`, and 50 of 53 stat blocks are still
+  un-migrated. See the corrected coverage table in §2 — this is not close to done.
+- **§3 2024 pass (PR #34): PARTIAL — 1 spell.** Inflict Wounds converted + markers added; the
+  other 32 spells and 28 monsters are unaudited. See §3's audit table.
+- **§4 reactions:** untouched (as intended).
+
+Both §2 and §3 were driven to roughly the *examples* the earlier draft named. The sections
+above have been rewritten to define scope by coverage, not by case list; use those targets.
+
+### App/UX work stream (merged via PR #32)
+
+**Delivered (tests + build green):**
 - Engine correctness: auto-crit rider doubling; charmed can't target charmer; frightened
   won't approach fear source; advantage/Bless-aware `hitChance` EV preview.
 - Rules authoring: compound **AND/OR** conditions (engine + AI contract + validator + UI);
@@ -246,9 +282,10 @@ features" warning (4) → real revise thread (2) → surface the tab earlier (5)
 **Remaining / deliberately deferred:**
 - **Inline target-list authoring** in the RuleBuilder (create a list where it's used, not
   only on the Action Library tab). Small-to-medium UI follow-up.
-- **Defensive/utility spell content** (Shield, Counterspell, Spirit Guardians, …). Mostly
-  **blocked** on §1 (dead `startOfTurn` timing for auras) and §4 (reaction economy). Add
-  the non-reaction, non-aura ones (extra healing, Haste-as-`actionEconomy`) once §1-A lands.
+- **Defensive/utility spell content** (Shield, Counterspell, Spirit Guardians, …). Reaction
+  spells stay **blocked** on §4. Aura/start-of-turn spells are now **unblocked** (§1-A landed
+  `startOfTurn`), so Spirit Guardians et al. can be modelled; scope this as part of §2's
+  coverage work, not a separate handful.
 - **Richer results:** pick which sample run to view / worst-case replay (needs
   `statistics.runMany` to retain more than the first run's frames) and PNG export (draw the
   bars to a `<canvas>` — no external lib needed, but non-trivial).
