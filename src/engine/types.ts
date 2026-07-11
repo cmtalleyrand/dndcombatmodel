@@ -421,6 +421,19 @@ export interface Action {
   // --- timed buffs/debuffs applied when the action resolves (Haste, Bless, Slow, ...) ---
   effects?: TimedEffect[];
 
+  // --- dynamic numbers: author formulas evaluated at resolution (see engine/expr.ts). ---
+  /**
+   * Each formula is evaluated against the actor/target context and ADDED to the corresponding
+   * derived value, so a save DC can scale with the caster's ability, or bonus damage with how
+   * hurt the target is. Static bonuses (saveDcBonus, damageBonus, ...) still apply on top.
+   */
+  dynamic?: {
+    saveDc?: string;
+    damageBonus?: string;
+    healBonus?: string;
+    toHitBonus?: string;
+  };
+
   // --- positioning: range & area of effect (linear, in feet) ---
   /** explicit range in feet; overrides the weapon's range for this action. */
   range?: number;

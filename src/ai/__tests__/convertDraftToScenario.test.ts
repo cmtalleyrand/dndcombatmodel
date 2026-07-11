@@ -165,4 +165,20 @@ describe('convertDraftToScenario', () => {
     expect(errors.some((e) => /unknown condition: notacondition/.test(e))).toBe(true);
   });
 
+  it('accepts a valid dynamic formula and rejects one using an unknown variable', () => {
+    const scalingBolt: AIScenarioDraft['actions'][number] = { id: '', name: 'Scaling Bolt', kind: 'spell', targets: 1, damage: '1d10', damageType: 'fire', save: { ability: 'dex', onSuccess: 'half' }, dynamic: { saveDc: '8 + prof + casterMod', damageBonus: 'floor((100 - targetHpPct) / 25)' } };
+    const good: AIScenarioDraft = {
+      ...baseDraft,
+      actions: [...baseDraft.actions, scalingBolt],
+      pcs: [{ ...baseDraft.pcs[0], actionNames: ['Longsword', 'Scaling Bolt'] }],
+    };
+    expect(validateDraft(good)).toEqual([]);
+
+    const bad: AIScenarioDraft = {
+      ...good,
+      actions: [...baseDraft.actions, { ...scalingBolt, dynamic: { saveDc: '8 + wisdom' } }],
+    };
+    expect(validateDraft(bad).some((e) => /dynamic\.saveDc formula is invalid/.test(e))).toBe(true);
+  });
+
 });

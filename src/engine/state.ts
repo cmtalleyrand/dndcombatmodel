@@ -19,6 +19,7 @@ import type {
 } from './types';
 import { combineAdvantage, rollD20, rollDice, type Advantage, type RNG } from './dice';
 import { savingThrowBonus } from './checks';
+import type { ExprContext } from './expr';
 
 export function abilityMod(score: number): number {
   return Math.floor((score - 10) / 2);
@@ -253,6 +254,28 @@ export function effectiveBaseSpeed(c: CombatantState): number {
 /** Whether the combatant resists `damageType` because of an active effect (Haste-style bracing, etc.). */
 export function effectResists(c: CombatantState, damageType?: DamageType): boolean {
   return !!damageType && c.effects.some((e) => e.modifier.resistances?.includes(damageType));
+}
+
+/** Build the whitelisted variable context an author formula (engine/expr.ts) is evaluated against. */
+export function buildExprContext(
+  state: CombatState,
+  actor: CombatantState,
+  target?: CombatantState,
+): ExprContext {
+  const spellAbility = actor.base.spellcastingAbility;
+  const hpPct = (c: CombatantState) => (c.base.maxHp > 0 ? (c.hp / c.base.maxHp) * 100 : 0);
+  return {
+    level: actor.base.level ?? 1,
+    prof: actor.base.proficiencyBonus,
+    casterMod: spellAbility ? abilityMod(actor.base.abilityScores[spellAbility]) : 0,
+    round: state.round,
+    selfHpPct: hpPct(actor),
+    selfMissingHp: Math.max(0, actor.base.maxHp - actor.hp),
+    targetHpPct: target ? hpPct(target) : 0,
+    targetMissingHp: target ? Math.max(0, target.base.maxHp - target.hp) : 0,
+    enemyCount: enemiesOf(state, actor).filter(isAlive).length,
+    allyCount: alliesOf(state, actor).filter(isAlive).length,
+  };
 }
 
 export interface SaveOutcome {

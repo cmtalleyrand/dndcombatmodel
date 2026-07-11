@@ -7,6 +7,7 @@ import {
 } from '../engine/types';
 import { CONDITION_KINDS } from '../engine/conditions';
 import { isValidDiceFormula } from '../engine/dice';
+import { validateExpr } from '../engine/expr';
 import type { AIScenarioDraft } from './types';
 
 const RULE_CONDITION_SET = new Set<string>(RULE_CONDITION_TYPES);
@@ -153,6 +154,11 @@ function validateAction(action: Action, errors: string[]): void {
   }
   for (const effect of action.effects ?? []) {
     validateEffect(effect, where, errors);
+  }
+  for (const [field, formula] of Object.entries(action.dynamic ?? {})) {
+    if (typeof formula !== 'string' || formula === '') continue;
+    const err = validateExpr(formula);
+    if (err) errors.push(`${where} dynamic.${field} formula is invalid: ${err}`);
   }
   for (const { field, value } of actionDiceFormulas(action)) {
     if (!isValidDiceFormula(value)) {

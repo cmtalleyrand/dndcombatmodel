@@ -94,6 +94,17 @@ interface Action {
       | { type: 'permanent' };
     onExpire?: { applyConditions: { kind: string; duration: { type: 'rounds'; rounds: number } }[] }; // e.g. Haste's end-of-spell lethargy
   }[];
+  // Dynamic numbers computed by a formula at resolution and ADDED to the derived value. Use for
+  // "DC scales with the caster" or "bonus damage as the target gets hurt". Formulas are pure
+  // arithmetic (+ - * / %, parentheses) over these functions: min,max,floor,ceil,round,abs,clamp,
+  // and ONLY these variables: level, prof, casterMod, round, selfHpPct, selfMissingHp,
+  // targetHpPct, targetMissingHp, enemyCount, allyCount. No other names are allowed.
+  dynamic?: {
+    saveDc?: string;      // e.g. "8 + prof + casterMod"
+    damageBonus?: string; // e.g. "floor((100 - targetHpPct) / 20)"
+    healBonus?: string;
+    toHitBonus?: string;
+  };
 }
 
 interface AIDraftRule {

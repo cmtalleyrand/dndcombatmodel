@@ -14,6 +14,7 @@ import { approach, applyMovementPolicy, effectiveRange, keepAtRange, reposition 
 import {
   abilityMod,
   attackAdvantage,
+  buildExprContext,
   distance,
   effectDamageBonus,
   effectResists,
@@ -27,6 +28,7 @@ import {
   type CombatantState,
   type CombatState,
 } from './state';
+import { evalExpr } from './expr';
 import type { Action, AoeTargets, ConditionApplication, DamageType, EffectTargetScope, Feature, ModifierPolicy, TacticalDecision } from './types';
 
 const BLESS_BONUS = '1d4';
@@ -210,6 +212,19 @@ function handleDropToZero(
 
 function concentrationAdvantage(_target: CombatantState): Advantage {
   return 'normal';
+}
+
+/** Evaluate an action's dynamic formula for `field` (0 when unset), rounded to an integer. */
+function dynamicValue(
+  state: CombatState,
+  actor: CombatantState,
+  action: Action,
+  field: 'saveDc' | 'damageBonus' | 'healBonus' | 'toHitBonus',
+  target?: CombatantState,
+): number {
+  const formula = action.dynamic?.[field];
+  if (!formula) return 0;
+  return Math.round(evalExpr(formula, buildExprContext(state, actor, target)));
 }
 
 /** End a combatant's concentration, removing conditions it was sustaining. */
@@ -803,13 +818,13 @@ function resolveAttack(
       const adv = combineAdvantage(baseAdv, featureAdv);
       const defenderAc = effectiveAc(target);
       const preRollFeatures = candidatePreRollFeatures.filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, defenderAc + (f.attackModifier?.ac ?? 0), adv, bless));
-      // Active-effect buffs (Haste/Bless-as-effect) add to the attacker's own to-hit and damage.
-      let toHit = profile.toHit + effectToHitBonus(actor);
+      // Active-effect buffs (Haste/Bless-as-effect) and dynamic formulas add to to-hit and damage.
+      let toHit = profile.toHit + effectToHitBonus(actor) + dynamicValue(state, actor, action, 'toHitBonus', target);
       for (const feature of preRollFeatures) {
         toHit += feature.attackModifier?.toHit ?? 0;
         if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
       }
-      let damageModifier = effectDamageBonus(actor) + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.damage ?? 0), 0);
+      let damageModifier = effectDamageBonus(actor) + dynamicValue(state, actor, action, 'damageBonus', target) + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.damage ?? 0), 0);
       const ac = defenderAc + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.ac ?? 0), 0);
       let blessNote = '';
       if (bless) {
@@ -962,7 +977,7 @@ function resolveSpellOrAbility(
 
   // Healing
   if (action.heal) {
-    const flat = healFlat(actor.base, action);
+    const flat = healFlat(actor.base, action) + dynamicValue(state, actor, action, 'healBonus', targets[0]);
     for (const target of targets) {
       if (target.dead) continue; // the dead cannot be healed
       const healAmt = rollDice(rng, action.heal).total + flat;
@@ -1004,15 +1019,18 @@ function resolveSpellOrAbility(
       // Saving-throw effect with a derived DC.
       const ability = action.save.ability;
       const dcFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll', target).filter((f) => canSpendFeature(actor, f));
-      const dc = spellSaveDC(actor.base, action) + dcFeatures.reduce((sum, f) => sum + (f.attackModifier?.saveDc ?? 0), 0);
+      const dc = spellSaveDC(actor.base, action)
+        + dcFeatures.reduce((sum, f) => sum + (f.attackModifier?.saveDc ?? 0), 0)
+        + dynamicValue(state, actor, action, 'saveDc', target);
       for (const feature of dcFeatures) {
         if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
       }
       const { saved, autoFail, total: saveTotal } = resolveSave(rng, target, ability, dc);
 
+      const saveDamageBonus = dynamicValue(state, actor, action, 'damageBonus', target);
       let dmg = 0;
       if (action.damage) {
-        dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat, false);
+        dmg = rollDamageTotal(rng, dmgProfile.damageDice, dmgProfile.damageFlat + saveDamageBonus, false);
         if (saved) dmg = action.save.onSuccess === 'half' ? Math.floor(dmg / 2) : 0;
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType);
       }
@@ -1046,7 +1064,7 @@ function resolveSpellOrAbility(
         baseAdv,
         preRollFeatures.reduce((current, feature) => combineAdvantage(current, feature.attackModifier?.advantage ?? 'normal'), 'normal' as Advantage),
       );
-      let toHit = (action.attackBonus ?? spellAttackBonus(actor.base, action)) + effectToHitBonus(actor);
+      let toHit = (action.attackBonus ?? spellAttackBonus(actor.base, action)) + effectToHitBonus(actor) + dynamicValue(state, actor, action, 'toHitBonus', target);
       toHit += preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.toHit ?? 0), 0);
       const ac = effectiveAc(target) + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.ac ?? 0), 0);
       for (const feature of preRollFeatures) {
@@ -1060,7 +1078,7 @@ function resolveSpellOrAbility(
         dmg = rollDamageTotal(
           rng,
           dmgProfile.damageDice,
-          dmgProfile.damageFlat,
+          dmgProfile.damageFlat + dynamicValue(state, actor, action, 'damageBonus', target),
           isMeleeAutoCrit(target, distance(actor, target)) || roll.isCrit,
         );
         applyDamage(state, rng, actor, target, dmg, events, dmgProfile.damageType, roll.isCrit);
