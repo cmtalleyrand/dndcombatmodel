@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { performAction } from '../actions';
+import type { LogEvent } from '../log';
 import { RNG } from '../dice';
 import { chooseAction } from '../rules';
 import { runSimulation } from '../simulator';

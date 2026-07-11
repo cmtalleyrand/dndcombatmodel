@@ -5,7 +5,11 @@ import type {
   Ability,
   Action,
   Combatant,
+  ConditionApplication,
   ConditionInstance,
+  DamageType,
+  DurationKind,
+  EffectModifier,
   Scenario,
   Side,
   SpellSlots,
@@ -20,11 +24,23 @@ export function abilityMod(score: number): number {
   return Math.floor((score - 10) / 2);
 }
 
+/** A {@link TimedEffect} currently active on a combatant during a simulation. */
+export interface ActiveEffect {
+  label?: string;
+  modifier: EffectModifier;
+  duration: DurationKind;
+  /** combatant id that applied this effect (for concentration linkage / stats). */
+  sourceId?: string;
+  onExpire?: { applyConditions: ConditionApplication[] };
+}
+
 /** Live combat state for one combatant during a simulation. */
 export interface CombatantState {
   base: Combatant;
   hp: number;
   conditions: ConditionInstance[];
+  /** active timed buffs/debuffs (Haste, Bless, Slow, ...). */
+  effects: ActiveEffect[];
   spellSlots: SpellSlots;
   /** action id this combatant is concentrating on, if any. */
   concentratingOn?: string;
@@ -76,6 +92,7 @@ export function initCombatantState(c: Combatant, fallbackPosition = 0): Combatan
     base: c,
     hp: c.maxHp,
     conditions: [],
+    effects: [],
     spellSlots: { ...c.spellSlots },
     usesRemaining,
     resources,
@@ -85,7 +102,7 @@ export function initCombatantState(c: Combatant, fallbackPosition = 0): Combatan
     stable: false,
     deathSaves: { successes: 0, failures: 0 },
     position: c.position ?? fallbackPosition,
-    speed: c.speed ?? 30,
+    speed: c.speed ?? DEFAULT_SPEED,
     riderUsedThisTurn: new Set(),
     featureUsedThisTurn: new Set(),
     movedThisTurn: 0,
@@ -98,6 +115,10 @@ export function initCombatantState(c: Combatant, fallbackPosition = 0): Combatan
 export const DEFAULT_ENCOUNTER_DISTANCE = 30;
 export const DEFAULT_MONSTER_FRONT_POSITION = 30;
 export const DEFAULT_FORMATION_SPACING = 15;
+/** Default movement speed (feet/turn) for a combatant that doesn't specify one. */
+export const DEFAULT_SPEED = 30;
+/** Default round cap before a simulation is declared a draw. */
+export const DEFAULT_MAX_ROUNDS = 200;
 
 export function defaultPosition(
   side: Side,
@@ -181,7 +202,12 @@ export function nearest(from: CombatantState, candidates: CombatantState[]): Com
 /** Saving throw bonus for an ability, including proficiency. */
 export { savingThrowBonus as saveBonus, abilityCheckBonus, skillCheckBonus } from './checks';
 
-/** Advantage on a saving throw of `ability` contributed by the target's own conditions. */
+/** Whether an effect modifier's save-advantage/disadvantage list covers `ability`. */
+function effectCoversSave(list: Ability[] | 'all' | undefined, ability: Ability): boolean {
+  return list === 'all' || (Array.isArray(list) && list.includes(ability));
+}
+
+/** Advantage on a saving throw of `ability` contributed by the target's conditions and effects. */
 export function saveAdvantage(target: CombatantState, ability: Ability): Advantage {
   // 'dodging' grants advantage on Dex saves; restrained gives disadvantage on Dex saves.
   let adv: Advantage = 'normal';
@@ -190,7 +216,43 @@ export function saveAdvantage(target: CombatantState, ability: Ability): Advanta
     if (target.conditions.some((c) => c.kind === 'restrained'))
       adv = combineAdvantage(adv, 'disadvantage');
   }
+  // Timed effects can grant save advantage/disadvantage on any ability (Haste, Bane, ...).
+  for (const e of target.effects) {
+    if (effectCoversSave(e.modifier.saveAdvantage, ability)) adv = combineAdvantage(adv, 'advantage');
+    if (effectCoversSave(e.modifier.saveDisadvantage, ability)) adv = combineAdvantage(adv, 'disadvantage');
+  }
   return adv;
+}
+
+/** AC including active-effect modifiers (defensive buffs like Shield of Faith / Haste). */
+export function effectiveAc(target: CombatantState): number {
+  return target.base.ac + target.effects.reduce((sum, e) => sum + (e.modifier.ac ?? 0), 0);
+}
+
+/** Additive to-hit contributed by the attacker's active effects. */
+export function effectToHitBonus(attacker: CombatantState): number {
+  return attacker.effects.reduce((sum, e) => sum + (e.modifier.toHit ?? 0), 0);
+}
+
+/** Additive flat damage contributed by the attacker's active effects. */
+export function effectDamageBonus(attacker: CombatantState): number {
+  return attacker.effects.reduce((sum, e) => sum + (e.modifier.damage ?? 0), 0);
+}
+
+/** Movement speed after active effects (override wins; deltas sum), before condition speed-zeroing. */
+export function effectiveBaseSpeed(c: CombatantState): number {
+  let override: number | undefined;
+  let delta = 0;
+  for (const e of c.effects) {
+    if (e.modifier.speedOverride !== undefined) override = e.modifier.speedOverride;
+    delta += e.modifier.speedDelta ?? 0;
+  }
+  return Math.max(0, (override ?? c.speed) + delta);
+}
+
+/** Whether the combatant resists `damageType` because of an active effect (Haste-style bracing, etc.). */
+export function effectResists(c: CombatantState, damageType?: DamageType): boolean {
+  return !!damageType && c.effects.some((e) => e.modifier.resistances?.includes(damageType));
 }
 
 export interface SaveOutcome {
@@ -220,12 +282,15 @@ export function resolveSave(
   return { saved: roll.total >= dc, total: roll.total, autoFail: false };
 }
 
-/** Advantage state for an attack roll made BY this combatant (from its own conditions). */
+/** Advantage state for an attack roll made BY this combatant (from its own conditions and effects). */
 export function attackAdvantage(attacker: CombatantState): Advantage {
   let adv: Advantage = 'normal';
   for (const cond of attacker.conditions) {
     const meta = CONDITION_CATALOG[cond.kind];
     if (meta.attackByAdvantage) adv = combineAdvantage(adv, meta.attackByAdvantage);
+  }
+  for (const e of attacker.effects) {
+    if (e.modifier.attackAdvantage) adv = combineAdvantage(adv, e.modifier.attackAdvantage);
   }
   return adv;
 }

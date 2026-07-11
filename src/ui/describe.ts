@@ -107,6 +107,9 @@ export function describeAction(
   if (action.applyConditions?.length) {
     bits.push(`applies ${action.applyConditions.map((a) => a.kind).join(', ')}`);
   }
+  if (action.effects?.length) {
+    bits.push(`effect: ${action.effects.map((e) => e.label ?? e.target).join(', ')}`);
+  }
   if (action.aoeRadius) bits.push(`AoE ${action.aoeRadius}ft`);
   if (action.range) bits.push(`rng ${action.range}ft`);
   if (action.concentration) bits.push('concentration');

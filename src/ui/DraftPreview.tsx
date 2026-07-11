@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ABILITIES, type Combatant, type Scenario } from '../engine/types';
-import { abilityMod } from '../engine/state';
+import { abilityMod, DEFAULT_MAX_ROUNDS } from '../engine/state';
 import { convertDraftToScenario } from '../ai/convertDraftToScenario';
 import type { AIScenarioDraft } from '../ai/types';
 import { describeAction, describeFeature } from './describe';
@@ -37,7 +37,7 @@ export function DraftPreview({ draft }: { draft: AIScenarioDraft }) {
           <span className="stat-chip">{pcs.length || draft.pcs.length} PC{(pcs.length || draft.pcs.length) === 1 ? '' : 's'}</span>
           <span className="stat-chip">{monsters.length || draft.enemies.length} monster{(monsters.length || draft.enemies.length) === 1 ? '' : 's'}</span>
           <span className="stat-chip">{draft.actions.length} action{draft.actions.length === 1 ? '' : 's'}</span>
-          <span className="stat-chip">{draft.maxRounds ?? 30} max rounds</span>
+          <span className="stat-chip">{draft.maxRounds ?? DEFAULT_MAX_ROUNDS} max rounds</span>
         </div>
       </div>
 

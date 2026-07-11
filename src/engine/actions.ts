@@ -15,13 +15,19 @@ import {
   abilityMod,
   attackAdvantage,
   distance,
+  effectDamageBonus,
+  effectResists,
+  effectToHitBonus,
+  effectiveAc,
+  enemiesOf,
   isAlive,
   resolveSave,
   targetAdvantage,
+  type ActiveEffect,
   type CombatantState,
   type CombatState,
 } from './state';
-import type { Action, AoeTargets, ConditionApplication, DamageType, Feature, ModifierPolicy, TacticalDecision } from './types';
+import type { Action, AoeTargets, ConditionApplication, DamageType, EffectTargetScope, Feature, ModifierPolicy, TacticalDecision } from './types';
 
 const BLESS_BONUS = '1d4';
 
@@ -69,6 +75,7 @@ function damageMultiplier(target: CombatantState, damageType?: DamageType): { mu
   const resisted =
     (!!damageType && !!target.base.resistances?.includes(damageType)) ||
     (physical && resistsPhysical(target.conditions)) ||
+    effectResists(target, damageType) ||
     target.conditions.some((c) => CONDITION_CATALOG[c.kind].resistAll);
   const vulnerable = !!damageType && !!target.base.vulnerabilities?.includes(damageType);
   if (resisted && vulnerable) return { mult: 1, note: '' }; // cancel
@@ -231,7 +238,118 @@ export function dropConcentration(
         message: `${caster.base.name} loses concentration; effect on ${target.base.name} ends.`,
       });
     }
+    // and any timed effects this caster was concentrating on (firing their on-expire riders).
+    const keptEffects: ActiveEffect[] = [];
+    for (const effect of target.effects) {
+      if (effect.duration.type === 'concentration' && effect.duration.sourceId === caster.base.id) {
+        fireEffectExpiry(state, target, effect, events, `${caster.base.name} loses concentration`);
+      } else {
+        keptEffects.push(effect);
+      }
+    }
+    target.effects = keptEffects;
   }
+}
+
+/** Apply a timed effect's on-expire rider (e.g. Haste's lethargy) to its bearer as it ends. */
+function fireEffectExpiry(
+  state: CombatState,
+  bearer: CombatantState,
+  effect: ActiveEffect,
+  events: LogEvent[],
+  reason: string,
+): void {
+  events.push({
+    round: state.round,
+    actorId: bearer.base.id,
+    actorName: bearer.base.name,
+    type: 'condition',
+    targetId: bearer.base.id,
+    targetName: bearer.base.name,
+    message: `${effect.label ?? 'Effect'} on ${bearer.base.name} ends (${reason}).`,
+  });
+  if (effect.onExpire?.applyConditions.length) {
+    applyConditionsTo(bearer, bearer, effect.onExpire.applyConditions, state, events);
+  }
+}
+
+/**
+ * Start-of-turn effect upkeep for `bearer`: deal any damage-over-time, then decrement
+ * round-based effect durations and expire the ones that run out (firing their on-expire riders).
+ * Save-ends and concentration effects are handled elsewhere, mirroring condition upkeep.
+ */
+export function tickEffectsStartOfTurn(
+  state: CombatState,
+  rng: RNG,
+  bearer: CombatantState,
+  events: LogEvent[],
+): void {
+  // Damage-over-time from still-active effects.
+  for (const effect of bearer.effects) {
+    const dot = effect.modifier.dot;
+    if (!dot) continue;
+    let dmg = dot.flat ?? 0;
+    if (dot.dice) dmg += rollDice(rng, dot.dice).total;
+    if (dmg <= 0) continue;
+    const source = state.combatants.find((c) => c.base.id === effect.sourceId) ?? bearer;
+    applyDamage(state, rng, source, bearer, dmg, events, dot.type);
+    events.push({
+      round: state.round,
+      actorId: bearer.base.id,
+      actorName: bearer.base.name,
+      type: 'attack',
+      targetId: bearer.base.id,
+      targetName: bearer.base.name,
+      damage: dmg,
+      message: `  ↳ ${effect.label ?? 'Effect'}: ${dmg} ${dot.type} damage.`,
+    });
+  }
+  // Decrement round durations; expire the exhausted ones.
+  const kept: ActiveEffect[] = [];
+  for (const effect of bearer.effects) {
+    if (effect.duration.type === 'rounds') {
+      const remaining = effect.duration.rounds - 1;
+      if (remaining > 0) {
+        kept.push({ ...effect, duration: { ...effect.duration, rounds: remaining } });
+      } else {
+        fireEffectExpiry(state, bearer, effect, events, 'duration ends');
+      }
+    } else {
+      kept.push(effect);
+    }
+  }
+  bearer.effects = kept;
+}
+
+/** End-of-turn saving throws for save-ends effects (Slow, Hold-style debuffs applied as effects). */
+export function tickEffectSaveEnds(
+  state: CombatState,
+  bearer: CombatantState,
+  rng: RNG,
+  events: LogEvent[],
+): void {
+  const kept: ActiveEffect[] = [];
+  for (const effect of bearer.effects) {
+    if (effect.duration.type !== 'saveEnds') {
+      kept.push(effect);
+      continue;
+    }
+    const { ability, dc } = effect.duration;
+    const { saved, total, autoFail } = resolveSave(rng, bearer, ability, dc);
+    if (saved) {
+      fireEffectExpiry(state, bearer, effect, events, `saved ${total} vs DC ${dc}`);
+    } else {
+      events.push({
+        round: state.round,
+        actorId: bearer.base.id,
+        actorName: bearer.base.name,
+        type: 'condition',
+        message: `${effect.label ?? 'Effect'} persists on ${bearer.base.name} (${autoFail ? 'auto-fails' : `fails ${total} vs DC ${dc}`}).`,
+      });
+      kept.push(effect);
+    }
+  }
+  bearer.effects = kept;
 }
 
 function applyConditionsTo(
@@ -336,13 +454,14 @@ export function performAction(
       const live = targets.filter(isAlive);
       performAction(state, rng, actor, child, live.length ? live : targets, events);
     }
+    applyActionEffects(state, actor, action, targets, events);
     return;
   }
 
   switch (action.kind) {
     case 'move': {
       reposition(state, actor, action.moveMode ?? 'advance', events);
-      return;
+      break;
     }
     case 'dash': {
       reposition(state, actor, action.moveMode ?? 'advance', events);
@@ -354,7 +473,7 @@ export function performAction(
         actionId: action.id,
         message: `${actor.base.name} takes the Dash action.`,
       });
-      return;
+      break;
     }
     case 'disengage':
     case 'help':
@@ -369,7 +488,7 @@ export function performAction(
         actionId: action.id,
         message: `${actor.base.name} takes the ${action.name} action.`,
       });
-      return;
+      break;
     }
     case 'dodge': {
       // Dodge grants the dodging condition until the actor's next turn.
@@ -382,7 +501,7 @@ export function performAction(
         actionId: action.id,
         message: `${actor.base.name} takes the Dodge action.`,
       });
-      return;
+      break;
     }
 
     case 'attack': {
@@ -394,7 +513,7 @@ export function performAction(
         effectiveRange(action, action.weaponId ? state.weaponsById[action.weaponId] : undefined),
         events,
       );
-      return;
+      break;
     }
 
     case 'spell':
@@ -403,7 +522,78 @@ export function performAction(
       if (action.damage || action.save || action.spellAttack) {
         keepAtRange(state, actor, targets[0], effectiveRange(action, undefined), events);
       }
-      return;
+      break;
+    }
+  }
+
+  // Timed buffs/debuffs land after the action resolves, on whoever the effect scopes to.
+  applyActionEffects(state, actor, action, targets, events);
+}
+
+/** Resolve which combatants an effect's scope lands on, relative to the actor and its targets. */
+function effectRecipients(
+  state: CombatState,
+  actor: CombatantState,
+  targets: CombatantState[],
+  scope: EffectTargetScope,
+): CombatantState[] {
+  switch (scope) {
+    case 'self':
+      return [actor];
+    case 'target':
+      return targets.filter(isAlive);
+    case 'allAllies':
+      return state.combatants.filter((c) => c.base.side === actor.base.side && isAlive(c));
+    case 'allEnemies':
+      return enemiesOf(state, actor).filter(isAlive);
+  }
+}
+
+/** Apply an action's timed effects to their scoped recipients when the action resolves. */
+function applyActionEffects(
+  state: CombatState,
+  actor: CombatantState,
+  action: Action,
+  targets: CombatantState[],
+  events: LogEvent[],
+): void {
+  if (!action.effects?.length) return;
+  for (const effect of action.effects) {
+    // A concentration-duration effect keeps the caster concentrating on this action.
+    if (effect.duration.type === 'concentration') startConcentration(state, actor, action, events);
+    const duration =
+      effect.duration.type === 'concentration'
+        ? { ...effect.duration, sourceId: actor.base.id }
+        : effect.duration;
+    for (const recipient of effectRecipients(state, actor, targets, effect.target)) {
+      const active: ActiveEffect = {
+        label: effect.label,
+        modifier: effect.modifier,
+        duration,
+        sourceId: actor.base.id,
+        onExpire: effect.onExpire,
+      };
+      recipient.effects.push(active);
+      // Conditions granted for the effect's lifetime ride the same duration.
+      if (effect.modifier.grantConditions?.length) {
+        applyConditionsTo(
+          recipient,
+          actor,
+          effect.modifier.grantConditions.map((kind) => ({ kind, duration })),
+          state,
+          events,
+        );
+      }
+      events.push({
+        round: state.round,
+        actorId: actor.base.id,
+        actorName: actor.base.name,
+        type: 'condition',
+        actionId: action.id,
+        targetId: recipient.base.id,
+        targetName: recipient.base.name,
+        message: `${recipient.base.name} gains ${effect.label ?? action.name}.`,
+      });
     }
   }
 }
@@ -475,10 +665,12 @@ function applicableFeatures(
   gap = 0,
 ): Feature[] {
   const featuresById = new Map<string, Feature>();
+  // A combatant's own features (inline + referenced from the library). `actionIds`, when
+  // present, restricts these to specific actions in the filter below — it does NOT pull in
+  // library features the combatant doesn't actually have.
   for (const feature of combatantFeatures(state, actor)) featuresById.set(feature.id, feature);
-  for (const feature of Object.values(state.featuresById)) {
-    if (feature.actionIds?.includes(action.id)) featuresById.set(feature.id, feature);
-  }
+  // Features synthesized from the action itself (its extraDamage/riders/conditions) apply to
+  // whoever uses the action.
   for (const feature of backCompatActionFeatures(action)) featuresById.set(feature.id, feature);
   return [...featuresById.values()].filter(
     (f) => f.timing === timing && (!f.actionIds || f.actionIds.includes(action.id)) && featureConditionApplies(state, actor, f, target, adv, gap),
@@ -609,14 +801,16 @@ function resolveAttack(
         'normal' as Advantage,
       );
       const adv = combineAdvantage(baseAdv, featureAdv);
-      const preRollFeatures = candidatePreRollFeatures.filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, target.base.ac + (f.attackModifier?.ac ?? 0), adv, bless));
-      let toHit = profile.toHit;
+      const defenderAc = effectiveAc(target);
+      const preRollFeatures = candidatePreRollFeatures.filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, defenderAc + (f.attackModifier?.ac ?? 0), adv, bless));
+      // Active-effect buffs (Haste/Bless-as-effect) add to the attacker's own to-hit and damage.
+      let toHit = profile.toHit + effectToHitBonus(actor);
       for (const feature of preRollFeatures) {
         toHit += feature.attackModifier?.toHit ?? 0;
         if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
       }
-      let damageModifier = preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.damage ?? 0), 0);
-      const ac = target.base.ac + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.ac ?? 0), 0);
+      let damageModifier = effectDamageBonus(actor) + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.damage ?? 0), 0);
+      const ac = defenderAc + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.ac ?? 0), 0);
       let blessNote = '';
       if (bless) {
         const b = rollDice(rng, BLESS_BONUS).total;
@@ -852,9 +1046,9 @@ function resolveSpellOrAbility(
         baseAdv,
         preRollFeatures.reduce((current, feature) => combineAdvantage(current, feature.attackModifier?.advantage ?? 'normal'), 'normal' as Advantage),
       );
-      let toHit = action.attackBonus ?? spellAttackBonus(actor.base, action);
+      let toHit = (action.attackBonus ?? spellAttackBonus(actor.base, action)) + effectToHitBonus(actor);
       toHit += preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.toHit ?? 0), 0);
-      const ac = target.base.ac + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.ac ?? 0), 0);
+      const ac = effectiveAc(target) + preRollFeatures.reduce((sum, f) => sum + (f.attackModifier?.ac ?? 0), 0);
       for (const feature of preRollFeatures) {
         if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
       }

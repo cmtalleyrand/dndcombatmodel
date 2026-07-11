@@ -1,4 +1,5 @@
 import type { Action, Combatant, Feature, FeatureTiming, Scenario, TargetList } from '../engine/types';
+import { DEFAULT_MAX_ROUNDS, DEFAULT_SPEED } from '../engine/state';
 import type { AIDraftCombatant, AIScenarioDraft } from './types';
 import { validateDraft } from './validateDraft';
 
@@ -101,7 +102,7 @@ export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
         const trait = passiveSpeedBySource.get(featureName);
         if (!trait) return speed;
         if (trait.speedOverride !== undefined) return trait.speedOverride;
-        return (speed ?? 30) + (trait.speedBonus ?? 0);
+        return (speed ?? DEFAULT_SPEED) + (trait.speedBonus ?? 0);
       }, entry.speed),
       level: entry.level,
       resistances: entry.resistances,
@@ -161,6 +162,6 @@ export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
     ruleLibrary: [],
     conditionLibrary: [],
     initiativeMode: 'rolled',
-    maxRounds: draft.maxRounds ?? 30,
+    maxRounds: draft.maxRounds ?? DEFAULT_MAX_ROUNDS,
   };
 }

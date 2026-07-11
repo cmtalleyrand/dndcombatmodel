@@ -1,4 +1,5 @@
 import type { AIScenarioDraft } from './types';
+import { DEFAULT_MAX_ROUNDS } from '../engine/state';
 
 export const AI_AUTHORING_SCHEMA_PROMPT = `Return only an approved-draft JSON object with these sections: scenarioSummary, pcs, enemies, actions, priorityScripts, targetPriorities, featureDecompositions, passiveTraits, resources, stackableModifiers, triggeredEffects, tacticalPolicies, assumptionsRequiringApproval. Use exact names consistently; names will be resolved to simulator ids only after validation.`;
 
@@ -19,7 +20,7 @@ interface AIScenarioDraft {
   triggeredEffects?: AIDraftTriggeredEffect[]; // on-hit, after-miss, precombat, start-of-combat, action-economy effects
   tacticalPolicies?: AIDraftTacticalPolicy[]; // movement, target, modifier, and resource policies by actor
   assumptionsRequiringApproval: string[]; // call out any guesses you made
-  maxRounds?: number; // defaults to 30
+  maxRounds?: number; // defaults to ${DEFAULT_MAX_ROUNDS}
 }
 
 interface AIDraftCombatant {
@@ -66,6 +67,33 @@ interface Action {
   cantripScaling?: boolean; // true for a damage cantrip whose dice scale with the caster's level (5/11/17)
   actionCost?: 'action' | 'bonus'; // 'bonus' for a bonus-action ability (e.g. Healing Word); default 'action'
   moveMode?: 'advance' | 'retreat'; // only for kind: 'move'
+  // Timed buffs/debuffs applied when the action resolves. This is how you model Haste, Bless,
+  // Bane, Slow, Faerie Fire, Shield of Faith, a damage-over-time, etc. — NOT as separate actions.
+  effects?: {
+    label?: string;              // shown in the log, e.g. "Haste"
+    target: 'self' | 'target' | 'allAllies' | 'allEnemies'; // 'target' = the action's chosen target(s)
+    modifier: {                  // any subset; absent fields = no change. Read live while active.
+      ac?: number;               // additive AC (defensive buff; negative makes the bearer easier to hit)
+      toHit?: number;            // additive to-hit on the bearer's own attacks (e.g. Bless ~ +2, Bane ~ -3)
+      damage?: number;           // additive flat damage on the bearer's own attacks
+      speedDelta?: number;       // +/- feet of speed
+      speedOverride?: number;    // set speed to this many feet (wins over speedDelta)
+      saveAdvantage?: ('str'|'dex'|'con'|'int'|'wis'|'cha')[] | 'all';    // advantage on these saves
+      saveDisadvantage?: ('str'|'dex'|'con'|'int'|'wis'|'cha')[] | 'all'; // disadvantage on these saves
+      attackAdvantage?: 'advantage' | 'disadvantage'; // on the bearer's own attack rolls
+      resistances?: string[];    // damage types the bearer resists while active
+      grantConditions?: string[];// condition kinds applied for the effect's lifetime
+      dot?: { dice?: string; flat?: number; type: string }; // damage at the start of each of the bearer's turns
+    };
+    // lifetime: fixed length, concentration, a repeating save, or permanent. "ends after 10 rounds"
+    // is { type: 'rounds', rounds: 10 }.
+    duration:
+      | { type: 'rounds'; rounds: number }
+      | { type: 'concentration'; sourceId: '' } // leave sourceId empty; the caster is wired automatically
+      | { type: 'saveEnds'; ability: 'str'|'dex'|'con'|'int'|'wis'|'cha'; dc: number }
+      | { type: 'permanent' };
+    onExpire?: { applyConditions: { kind: string; duration: { type: 'rounds'; rounds: number } }[] }; // e.g. Haste's end-of-spell lethargy
+  }[];
 }
 
 interface AIDraftRule {
@@ -123,7 +151,7 @@ interface AIDraftTargetPriority {
   fallback: string; // one of the TargetStrategy values listed above
 }
 
-Decomposition rules: never turn a feat, maneuver, species ability, or long-duration buff into a separate Action unless the ability is actually a distinct action chosen in play. A longbow attack with Sharpshooter is one base Action named like "Longbow", plus a stackableModifier named "Sharpshooter". Precision Attack is a post-roll stackableModifier with a resource, not "Precision Attack Longbow". Action Surge is an actionEconomy triggeredEffect/resource, not "Action Surge Attack". Every requested feature must appear in featureDecompositions and must be consumed by at least one passiveTraits, resources, stackableModifiers, triggeredEffects, tacticalPolicies, or assumptionsRequiringApproval entry. For each requested feature record the rule source/name, simulator representation, trigger/timing, resource cost, stacking behavior, and any known approximation or unsupported piece. Movement-affecting features must either change speed through passiveTraits or create a movement policy. Limited-use features must declare a resources entry with a positive max.
+Decomposition rules: never turn a feat, maneuver, species ability, or long-duration buff into a separate Action unless the ability is actually a distinct action chosen in play. A longbow attack with Sharpshooter is one base Action named like "Longbow", plus a stackableModifier named "Sharpshooter". Precision Attack is a post-roll stackableModifier with a resource, not "Precision Attack Longbow". Action Surge is an actionEconomy triggeredEffect/resource, not "Action Surge Attack". Every requested feature must appear in featureDecompositions and must be consumed by at least one passiveTraits, resources, stackableModifiers, triggeredEffects, tacticalPolicies, or assumptionsRequiringApproval entry. For each requested feature record the rule source/name, simulator representation, trigger/timing, resource cost, stacking behavior, and any known approximation or unsupported piece. Movement-affecting features must either change speed through passiveTraits or create a movement policy. Limited-use features must declare a resources entry with a positive max. Buff/debuff spells and auras (Haste, Bless, Bane, Slow, Faerie Fire, Shield of Faith, Hex-style penalties, damage-over-time) are the "effects" on the casting Action — not separate actions and not passiveTraits. A single Haste is one Action with concentration:true and one effect carrying ac:+2, speedOverride, saveAdvantage:["dex"], plus an extraActionCount triggeredEffect for the extra action and onExpire lethargy; do not invent a "Hasted Attack" action. Reserve passiveTraits for permanent, always-on speed changes only.
 
 Reusing existing content: the user turn may include a catalog of actions, features, and combatants that already exist in this simulator. Treat it as a menu — pick the entries relevant to the requested encounter and reuse them by their exact name (an Action you reuse must still appear in "actions" with that exact name; a combatant you reuse must appear in "pcs"/"enemies" with matching stats). Only invent brand-new actions/features when nothing in the catalog fits. You may still create entirely new content — the catalog is a shortcut, not a whitelist.
 
