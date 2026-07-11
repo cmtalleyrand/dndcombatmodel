@@ -58,6 +58,31 @@ describe('convertDraftToScenario', () => {
     expect(scenario.targetLists[0].entries).toEqual([scenario.combatants[1].id]);
   });
 
+
+
+  it('converts decomposed resources, modifiers, passive speed, and policies into engine fields', () => {
+    const draft: AIScenarioDraft = {
+      ...baseDraft,
+      pcs: [{ ...baseDraft.pcs[0], declaredFeatureNames: ['Fleet Feet', 'Power Shot'], actionNames: ['Longsword'] }],
+      featureDecompositions: [
+        { sourceName: 'Fleet Feet', category: 'passiveTrait', simulatorRepresentation: 'passiveTraits[Fleet Feet].speedBonus', triggerTiming: 'passive', resourceCost: 'none', stackingBehavior: 'adds to speed' },
+        { sourceName: 'Power Shot', category: 'stackableModifier', simulatorRepresentation: 'stackableModifiers[Power Shot]', triggerTiming: 'beforeAttackRoll', resourceCost: '1 Power Shot Use', consumesResourceName: 'Power Shot Uses', stackingBehavior: 'stacks on Longsword' },
+      ],
+      passiveTraits: [{ name: 'Fleet Feet', sourceName: 'Fleet Feet', speedBonus: 10, simulatorRepresentation: '+10 speed' }],
+      resources: [{ name: 'Power Shot Uses', sourceName: 'Power Shot', max: 2 }],
+      stackableModifiers: [{ name: 'Power Shot', sourceName: 'Power Shot', timing: 'beforeAttackRoll', appliesToActionNames: ['Longsword'], toHit: -5, damage: 10, resourceName: 'Power Shot Uses', stackingBehavior: 'additive' }],
+      tacticalPolicies: [{ actorName: 'Ada', sourceName: 'Power Shot', policy: { modifierPolicy: { kind: 'always' }, movementPolicy: { kind: 'maintainRange', preferredRange: 30 } } }],
+    };
+
+    const scenario = convertDraftToScenario(draft);
+    const ada = scenario.combatants[0];
+
+    expect(ada.speed).toBe(40);
+    expect(scenario.features?.[0]).toMatchObject({ name: 'Power Shot', resource: { id: 'power-shot-uses', max: 2 }, attackModifier: { toHit: -5, damage: 10 } });
+    expect(ada.featureIds).toEqual([scenario.features?.[0].id]);
+    expect(ada.tacticalPolicy?.movementPolicy).toEqual({ kind: 'maintainRange', preferredRange: 30 });
+  });
+
   it('rejects unresolved action or combatant references', () => {
     const invalid: AIScenarioDraft = {
       ...baseDraft,

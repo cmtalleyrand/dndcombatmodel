@@ -1,4 +1,4 @@
-import type { Action, Combatant, Scenario, TargetList } from '../engine/types';
+import type { Action, Combatant, Feature, Scenario, TargetList } from '../engine/types';
 import type { AIDraftCombatant, AIScenarioDraft } from './types';
 import { validateDraft } from './validateDraft';
 
@@ -18,6 +18,10 @@ function uniqueId(prefix: string, value: string, used: Set<string>): string {
   return id;
 }
 
+function resourceId(name: string): string {
+  return slug(name);
+}
+
 export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
   const errors = validateDraft(draft);
   if (errors.length > 0) throw new Error(errors.join('\n'));
@@ -30,6 +34,38 @@ export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
     actionIdsByName.set(action.name, id);
     return { ...action, id };
   });
+
+  const actionIdsForFeature = (names: string[] | undefined): string[] | undefined => {
+    if (!names || names.length === 0) return undefined;
+    return names.map((name) => actionIdsByName.get(name)).filter((id): id is string => Boolean(id));
+  };
+
+  const usedFeatureIds = new Set<string>();
+  const features: Feature[] = [
+    ...(draft.stackableModifiers ?? []).map((modifier): Feature => ({
+      id: uniqueId('feat', modifier.name, usedFeatureIds),
+      name: modifier.name,
+      timing: modifier.timing,
+      resource: modifier.resourceName ? { id: resourceId(modifier.resourceName), max: draft.resources?.find((resource) => resource.name === modifier.resourceName)?.max ?? 1 } : undefined,
+      spend: modifier.resourceName ? { resourceId: resourceId(modifier.resourceName), amount: 1, trigger: modifier.spendTrigger ?? (modifier.timing === 'onHit' ? 'onHit' : 'always'), missThreshold: modifier.missThreshold } : undefined,
+      attackModifier: modifier.toHit !== undefined || modifier.damage !== undefined ? { toHit: modifier.toHit, damage: modifier.damage, label: modifier.name } : undefined,
+      extraDamage: modifier.extraDamageDice && modifier.extraDamageType ? [{ dice: modifier.extraDamageDice, type: modifier.extraDamageType, label: modifier.name }] : undefined,
+      actionIds: actionIdsForFeature(modifier.appliesToActionNames),
+    })),
+    ...(draft.triggeredEffects ?? []).filter((effect) => effect.timing === 'onHit' || effect.timing === 'actionEconomy').map((effect): Feature => ({
+      id: uniqueId('feat', effect.name, usedFeatureIds),
+      name: effect.name,
+      timing: effect.timing === 'actionEconomy' ? 'actionEconomy' : 'onHit',
+      resource: effect.resourceName ? { id: resourceId(effect.resourceName), max: draft.resources?.find((resource) => resource.name === effect.resourceName)?.max ?? 1 } : undefined,
+      spend: effect.resourceName ? { resourceId: resourceId(effect.resourceName), amount: 1, trigger: effect.spendTrigger ?? (effect.timing === 'onHit' ? 'onHit' : 'always') } : undefined,
+      extraDamage: effect.extraDamageDice && effect.extraDamageType ? [{ dice: effect.extraDamageDice, type: effect.extraDamageType, label: effect.name }] : undefined,
+      extraAction: effect.extraActionCount ? { count: effect.extraActionCount } : undefined,
+      actionIds: actionIdsForFeature(effect.appliesToActionNames),
+    })),
+  ];
+
+  const policyByActor = new Map((draft.tacticalPolicies ?? []).map((policy) => [policy.actorName, policy.policy]));
+  const passiveSpeedBySource = new Map((draft.passiveTraits ?? []).map((trait) => [trait.sourceName, trait]));
 
   const usedCombatantIds = new Set<string>();
   const combatantIdsByName = new Map<string, string>();
@@ -50,12 +86,19 @@ export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
       script: [],
       spellSlots: entry.spellSlots ?? {},
       position: entry.position,
-      speed: entry.speed,
+      speed: [...(entry.declaredFeatureNames ?? [])].reduce((speed, featureName) => {
+        const trait = passiveSpeedBySource.get(featureName);
+        if (!trait) return speed;
+        if (trait.speedOverride !== undefined) return trait.speedOverride;
+        return (speed ?? 30) + (trait.speedBonus ?? 0);
+      }, entry.speed),
       level: entry.level,
       resistances: entry.resistances,
       immunities: entry.immunities,
       vulnerabilities: entry.vulnerabilities,
       conditionImmunities: entry.conditionImmunities,
+      featureIds: features.filter((feature) => (entry.declaredFeatureNames ?? []).includes(feature.name) || (entry.declaredFeatureNames ?? []).some((name) => (draft.stackableModifiers ?? []).some((modifier) => modifier.name === feature.name && modifier.sourceName === name) || (draft.triggeredEffects ?? []).some((effect) => effect.name === feature.name && effect.sourceName === name))).map((feature) => feature.id),
+      tacticalPolicy: policyByActor.get(entry.name),
     };
   };
 
@@ -101,6 +144,7 @@ export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
     name: draft.scenarioSummary || 'AI-authored scenario',
     combatants,
     actions,
+    features,
     weapons: [],
     targetLists,
     ruleLibrary: [],

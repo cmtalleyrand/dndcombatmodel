@@ -9,6 +9,7 @@ import {
   AI_PROMPT_TEMPLATE,
   buildGenerationUserPrompt,
   buildRevisionUserPrompt,
+  buildValidationRepairUserPrompt,
   formatApprovalTemplate,
 } from '../ai/schemaPrompt';
 import { validateDraft } from '../ai/validateDraft';
@@ -36,6 +37,12 @@ const emptyDraft: AIScenarioDraft = {
   actions: [],
   priorityScripts: [],
   targetPriorities: [],
+  featureDecompositions: [],
+  passiveTraits: [],
+  resources: [],
+  stackableModifiers: [],
+  triggeredEffects: [],
+  tacticalPolicies: [],
   assumptionsRequiringApproval: ['User must confirm that generated mechanics match the intended encounter.'],
 };
 
@@ -86,6 +93,12 @@ function draftFromScenario(scenario: Scenario, prompt: string): AIScenarioDraft 
         excludeIncapacitated: rule.target.excludeIncapacitated,
       },
     }))),
+    featureDecompositions: [],
+    passiveTraits: [],
+    resources: [],
+    stackableModifiers: [],
+    triggeredEffects: [],
+    tacticalPolicies: scenario.combatants.filter((combatant) => combatant.tacticalPolicy).map((combatant) => ({ actorName: combatant.name, sourceName: 'Existing scenario tactical policy', policy: combatant.tacticalPolicy! })),
     targetPriorities: scenario.targetLists.map((list) => ({
       name: list.name,
       targetNames: list.entries.map((id) => combatantNamesById.get(id) ?? id),
@@ -164,10 +177,21 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
         onChunk: setStreamPreview,
         onPhase: setPhase,
       });
-      const typedDraft = draft as AIScenarioDraft;
+      let typedDraft = draft as AIScenarioDraft;
+      let semanticRepaired = false;
+      let issues = validateDraft(typedDraft);
+      if (issues.length > 0) {
+        const repairPrompt = buildValidationRepairUserPrompt(JSON.stringify(typedDraft, null, 2), issues);
+        const repairedResult = await generateDraftJson(settings, AI_GENERATION_SYSTEM_PROMPT, repairPrompt, {
+          onChunk: setStreamPreview,
+          onPhase: setPhase,
+        });
+        typedDraft = repairedResult.draft as AIScenarioDraft;
+        issues = validateDraft(typedDraft);
+        semanticRepaired = true;
+      }
       applyParsedDraft(typedDraft);
-      const issues = validateDraft(typedDraft);
-      const prefix = repaired ? `Draft ${successVerb} (needed one automatic JSON fix). ` : `Draft ${successVerb}. `;
+      const prefix = repaired || semanticRepaired ? `Draft ${successVerb} (automatic ${[repaired ? 'JSON' : '', semanticRepaired ? 'semantic' : ''].filter(Boolean).join(' + ')} fix attempted). ` : `Draft ${successVerb}. `;
       setMessage(
         prefix +
           (issues.length === 0
@@ -350,7 +374,7 @@ export function AIAuthoringTab({ scenario, setScenario }: Props) {
           <h3>
             Approval preview{' '}
             <span className="muted" style={{ fontWeight: 400, fontSize: '0.8rem' }}>
-              (read-only — edit the JSON below to change what gets applied)
+              easy-read view — give written feedback in the prompt box and click Revise
             </span>
           </h3>
           <textarea

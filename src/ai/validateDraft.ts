@@ -15,6 +15,21 @@ const ABILITY_SET = new Set<string>(ABILITIES);
 const DAMAGE_TYPE_SET = new Set<string>(DAMAGE_TYPES);
 const CONDITION_SET = new Set<string>(CONDITION_KINDS);
 
+function norm(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function featureMentioned(feature: string, text: string | undefined): boolean {
+  if (!text) return false;
+  return norm(text).includes(norm(feature));
+}
+
+function actionMechanicsKey(action: Action): string {
+  const { id: _id, name: _name, note: _note, ...rest } = action;
+  return JSON.stringify(rest, Object.keys(rest).sort());
+}
+
+
 /** Collect the dice-formula string fields on an action so we can validate they parse. */
 function actionDiceFormulas(action: Action): { field: string; value: string }[] {
   const out: { field: string; value: string }[] = [];
@@ -117,6 +132,96 @@ export function validateDraft(draft: AIScenarioDraft): string[] {
     }
     for (const targetName of priority.targetNames) {
       if (!combatantNames.has(targetName)) errors.push(`Target priority references unknown target: ${targetName}`);
+    }
+  }
+
+
+
+  const resourceNames = new Set((draft.resources ?? []).map((resource) => resource.name));
+  for (const resource of draft.resources ?? []) {
+    if (!Number.isFinite(resource.max) || resource.max <= 0) {
+      errors.push(`Resource "${resource.name}" must have a positive max use limit.`);
+    }
+  }
+
+  for (const modifier of draft.stackableModifiers ?? []) {
+    for (const actionName of modifier.appliesToActionNames) {
+      if (!actionNames.has(actionName)) errors.push(`Modifier "${modifier.name}" references unknown base action: ${actionName}`);
+    }
+    if (modifier.resourceName && !resourceNames.has(modifier.resourceName)) {
+      errors.push(`Modifier "${modifier.name}" spends unknown resource: ${modifier.resourceName}`);
+    }
+    if (modifier.extraDamageType && !DAMAGE_TYPE_SET.has(modifier.extraDamageType)) {
+      errors.push(`Modifier "${modifier.name}" has invalid extraDamageType: ${modifier.extraDamageType}`);
+    }
+    if (modifier.extraDamageDice && !isValidDiceFormula(modifier.extraDamageDice)) {
+      errors.push(`Modifier "${modifier.name}" has an invalid extraDamageDice formula: "${modifier.extraDamageDice}"`);
+    }
+  }
+
+  for (const effect of draft.triggeredEffects ?? []) {
+    for (const actionName of effect.appliesToActionNames ?? []) {
+      if (!actionNames.has(actionName)) errors.push(`Triggered effect "${effect.name}" references unknown base action: ${actionName}`);
+    }
+    if (effect.resourceName && !resourceNames.has(effect.resourceName)) {
+      errors.push(`Triggered effect "${effect.name}" spends unknown resource: ${effect.resourceName}`);
+    }
+    if (effect.extraDamageType && !DAMAGE_TYPE_SET.has(effect.extraDamageType)) {
+      errors.push(`Triggered effect "${effect.name}" has invalid extraDamageType: ${effect.extraDamageType}`);
+    }
+    if (effect.extraDamageDice && !isValidDiceFormula(effect.extraDamageDice)) {
+      errors.push(`Triggered effect "${effect.name}" has an invalid extraDamageDice formula: "${effect.extraDamageDice}"`);
+    }
+  }
+
+  for (const policy of draft.tacticalPolicies ?? []) {
+    if (!combatantNames.has(policy.actorName)) errors.push(`Tactical policy references unknown combatant: ${policy.actorName}`);
+  }
+
+  const consumedFeatureNames = new Set<string>();
+  const consume = (sourceName: string | undefined) => { if (sourceName) consumedFeatureNames.add(norm(sourceName)); };
+  (draft.passiveTraits ?? []).forEach((item) => consume(item.sourceName));
+  (draft.resources ?? []).forEach((item) => consume(item.sourceName));
+  (draft.stackableModifiers ?? []).forEach((item) => consume(item.sourceName));
+  (draft.triggeredEffects ?? []).forEach((item) => consume(item.sourceName));
+  (draft.tacticalPolicies ?? []).forEach((item) => consume(item.sourceName));
+  for (const assumption of draft.assumptionsRequiringApproval) {
+    for (const feature of draft.featureDecompositions ?? []) {
+      if (featureMentioned(feature.sourceName, assumption)) consume(feature.sourceName);
+    }
+  }
+  for (const feature of draft.featureDecompositions ?? []) {
+    if (!consumedFeatureNames.has(norm(feature.sourceName))) {
+      errors.push(`Feature "${feature.sourceName}" is declared but not consumed by a passive trait, resource, modifier, triggered effect, tactical policy, or explicit assumption.`);
+    }
+    if ((feature.resourceCost && !/^none$/i.test(feature.resourceCost.trim())) || feature.consumesResourceName) {
+      const resourceName = feature.consumesResourceName;
+      if (resourceName && !resourceNames.has(resourceName)) errors.push(`Feature "${feature.sourceName}" consumes unknown resource: ${resourceName}`);
+      if (!resourceName && !(draft.resources ?? []).some((resource) => featureMentioned(resource.sourceName, feature.sourceName))) {
+        errors.push(`Feature "${feature.sourceName}" has a limited resource cost but no resource pool or explicit use limit.`);
+      }
+    }
+    const movementText = `${feature.sourceName} ${feature.simulatorRepresentation} ${feature.knownApproximationOrUnsupported ?? ''}`;
+    if (/\b(speed|movement|move|range|kite|retreat|dash)\b/i.test(movementText)) {
+      const hasPassiveSpeed = (draft.passiveTraits ?? []).some((trait) => featureMentioned(feature.sourceName, trait.sourceName) && (trait.speedBonus !== undefined || trait.speedOverride !== undefined));
+      const hasMovementPolicy = (draft.tacticalPolicies ?? []).some((policy) => featureMentioned(feature.sourceName, policy.sourceName) && !!policy.policy.movementPolicy);
+      if (!hasPassiveSpeed && !hasMovementPolicy) {
+        errors.push(`Movement-affecting feature "${feature.sourceName}" must affect speed or create a movement policy.`);
+      }
+    }
+  }
+
+  const actionsByMechanics = new Map<string, string>();
+  for (const action of draft.actions) {
+    const key = actionMechanicsKey(action);
+    const duplicate = actionsByMechanics.get(key);
+    if (duplicate) {
+      const duplicatedFeature = (draft.featureDecompositions ?? []).find((feature) => featureMentioned(feature.sourceName, action.name));
+      if (duplicatedFeature) {
+        errors.push(`Action "${action.name}" appears to be a pseudo-action for feature "${duplicatedFeature.sourceName}" duplicating "${duplicate}" without mechanical differences; represent it as a modifier/effect instead.`);
+      }
+    } else {
+      actionsByMechanics.set(key, action.name);
     }
   }
 
