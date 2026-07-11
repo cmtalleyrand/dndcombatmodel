@@ -120,4 +120,65 @@ describe('convertDraftToScenario', () => {
     expect(scenario.combatants[0].featureIds).toEqual(scenario.features?.map((feature) => feature.id));
   });
 
+  it('carries a Haste-style timed effect from an approved draft into the scenario', () => {
+    const draft: AIScenarioDraft = {
+      ...baseDraft,
+      actions: [
+        ...baseDraft.actions,
+        {
+          id: '', name: 'Haste', kind: 'spell', targets: 1, concentration: true,
+          effects: [
+            {
+              label: 'Haste', target: 'target',
+              modifier: { ac: 2, speedOverride: 60, saveAdvantage: ['dex'] },
+              duration: { type: 'concentration', sourceId: '' },
+              onExpire: { applyConditions: [{ kind: 'incapacitated', duration: { type: 'rounds', rounds: 1 } }] },
+            },
+          ],
+        },
+      ],
+      pcs: [{ ...baseDraft.pcs[0], actionNames: ['Longsword', 'Haste'] }],
+    };
+
+    expect(validateDraft(draft)).toEqual([]);
+    const scenario = convertDraftToScenario(draft);
+    const haste = scenario.actions.find((a) => a.name === 'Haste');
+    expect(haste?.effects?.[0]).toMatchObject({ target: 'target', modifier: { ac: 2, speedOverride: 60 } });
+    expect(haste?.effects?.[0].duration.type).toBe('concentration');
+  });
+
+  it('rejects a draft whose effect has an invalid target scope or condition', () => {
+    // Deliberately malformed effect (a model could emit these); cast past the compile-time types
+    // so we can prove the runtime validator catches them.
+    const badAction = {
+      id: '', name: 'Bad Buff', kind: 'spell', targets: 1,
+      effects: [{ label: 'Bad', target: 'everyone', modifier: { grantConditions: ['blessed', 'notacondition'] }, duration: { type: 'rounds', rounds: 2 } }],
+    } as unknown as AIScenarioDraft['actions'][number];
+    const draft: AIScenarioDraft = {
+      ...baseDraft,
+      actions: [...baseDraft.actions, badAction],
+      pcs: [{ ...baseDraft.pcs[0], actionNames: ['Longsword', 'Bad Buff'] }],
+    };
+
+    const errors = validateDraft(draft);
+    expect(errors.some((e) => /invalid target scope/.test(e))).toBe(true);
+    expect(errors.some((e) => /unknown condition: notacondition/.test(e))).toBe(true);
+  });
+
+  it('accepts a valid dynamic formula and rejects one using an unknown variable', () => {
+    const scalingBolt: AIScenarioDraft['actions'][number] = { id: '', name: 'Scaling Bolt', kind: 'spell', targets: 1, damage: '1d10', damageType: 'fire', save: { ability: 'dex', onSuccess: 'half' }, dynamic: { saveDc: '8 + prof + casterMod', damageBonus: 'floor((100 - targetHpPct) / 25)' } };
+    const good: AIScenarioDraft = {
+      ...baseDraft,
+      actions: [...baseDraft.actions, scalingBolt],
+      pcs: [{ ...baseDraft.pcs[0], actionNames: ['Longsword', 'Scaling Bolt'] }],
+    };
+    expect(validateDraft(good)).toEqual([]);
+
+    const bad: AIScenarioDraft = {
+      ...good,
+      actions: [...baseDraft.actions, { ...scalingBolt, dynamic: { saveDc: '8 + wisdom' } }],
+    };
+    expect(validateDraft(bad).some((e) => /dynamic\.saveDc formula is invalid/.test(e))).toBe(true);
+  });
+
 });

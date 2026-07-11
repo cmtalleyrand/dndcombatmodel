@@ -1,7 +1,7 @@
 // Curated SRD-flavored content: a reusable action library, sample PCs and monsters,
 // and a default scenario that demonstrates scripting (priorities, conditions, targets).
 
-import { DEFAULT_ENCOUNTER_DISTANCE, defaultPosition } from '../engine/state';
+import { DEFAULT_ENCOUNTER_DISTANCE, DEFAULT_MAX_ROUNDS, defaultPosition } from '../engine/state';
 import type { Action, Combatant, ConditionPreset, Feature, RuleTemplate, Scenario } from '../engine/types';
 import { SRD_WEAPONS } from './weapons';
 
@@ -1375,6 +1375,6 @@ export function defaultScenario(): Scenario {
     conditionLibrary: DEFAULT_CONDITION_LIBRARY,
     initiativeMode: 'rolled',
     encounterDistance: DEFAULT_ENCOUNTER_DISTANCE,
-    maxRounds: 30,
+    maxRounds: DEFAULT_MAX_ROUNDS,
   };
 }

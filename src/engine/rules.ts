@@ -3,6 +3,7 @@
 import { hasCondition } from './conditions';
 import {
   alliesOf,
+  distance,
   enemiesOf,
   isAlive,
   type CombatantState,
@@ -19,6 +20,13 @@ export interface ChosenAction {
 
 function hpPct(c: CombatantState): number {
   return (c.hp / c.base.maxHp) * 100;
+}
+
+/** Distance in feet to the nearest living enemy, or undefined when none are left. */
+function nearestEnemyGap(state: CombatState, actor: CombatantState): number | undefined {
+  const foes = enemiesOf(state, actor).filter(isAlive);
+  if (foes.length === 0) return undefined;
+  return Math.min(...foes.map((foe) => distance(actor, foe)));
 }
 
 /** Evaluate a rule predicate — the primary leaf combined with any `extra` leaves via AND/OR. */
@@ -83,6 +91,16 @@ function evaluateLeaf(
       return enemiesOf(state, actor)
         .filter(isAlive)
         .some((e) => !!e.concentratingOn);
+
+    case 'nearestEnemyWithin': {
+      const gap = nearestEnemyGap(state, actor);
+      return gap !== undefined && gap <= (cond.value ?? 0);
+    }
+
+    case 'nearestEnemyBeyond': {
+      const gap = nearestEnemyGap(state, actor);
+      return gap !== undefined && gap > (cond.value ?? 0);
+    }
 
     case 'slotAvailable':
       return hasSlot(actor, action);

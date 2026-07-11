@@ -54,3 +54,31 @@ describe('compound rule conditions', () => {
     expect(evalWith(cond, 5)).toBe(true);
   });
 });
+
+describe('distance-based rule conditions', () => {
+  /** Evaluate a condition with the hero and foe placed at explicit positions (feet). */
+  function evalAtDistance(cond: RuleCondition, heroPos: number, foePos: number) {
+    const state = buildCombatState(scenario);
+    state.combatants[0].position = heroPos;
+    state.combatants[1].position = foePos;
+    return evaluateCondition(state, state.combatants[0], cond, dummy);
+  }
+
+  it('nearestEnemyWithin fires only when the nearest enemy is at or inside the range', () => {
+    expect(evalAtDistance({ type: 'nearestEnemyWithin', value: 5 }, 0, 5)).toBe(true);
+    expect(evalAtDistance({ type: 'nearestEnemyWithin', value: 5 }, 0, 30)).toBe(false);
+  });
+
+  it('nearestEnemyBeyond fires only when the nearest enemy is farther than the range', () => {
+    expect(evalAtDistance({ type: 'nearestEnemyBeyond', value: 10 }, 0, 30)).toBe(true);
+    expect(evalAtDistance({ type: 'nearestEnemyBeyond', value: 10 }, 0, 5)).toBe(false);
+  });
+
+  it('distance conditions never fire when no living enemy remains', () => {
+    const state = buildCombatState(scenario);
+    state.combatants[1].down = true;
+    state.combatants[1].hp = 0;
+    expect(evaluateCondition(state, state.combatants[0], { type: 'nearestEnemyWithin', value: 100 }, dummy)).toBe(false);
+    expect(evaluateCondition(state, state.combatants[0], { type: 'nearestEnemyBeyond', value: 0 }, dummy)).toBe(false);
+  });
+});

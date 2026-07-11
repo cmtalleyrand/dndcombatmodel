@@ -16,6 +16,8 @@ export const CONDITION_TYPES: { value: RuleConditionType; label: string; needs: 
   { value: 'roundAtMost', label: 'Round ≤', needs: 'value' },
   { value: 'notConcentrating', label: 'Not concentrating', needs: 'none' },
   { value: 'anyEnemyConcentrating', label: 'An enemy is concentrating', needs: 'none' },
+  { value: 'nearestEnemyWithin', label: 'Nearest enemy within (ft)', needs: 'value' },
+  { value: 'nearestEnemyBeyond', label: 'Nearest enemy beyond (ft)', needs: 'value' },
   { value: 'slotAvailable', label: "Spell slot available (for this action's level)", needs: 'none' },
 ];
 
@@ -51,6 +53,9 @@ export function defaultCondition(type: RuleConditionType): RuleCondition {
     case 'roundAtLeast':
     case 'roundAtMost':
       return { type, value: 1 };
+    case 'nearestEnemyWithin':
+    case 'nearestEnemyBeyond':
+      return { type, value: 5 };
     case 'selfHasCondition':
     case 'anyEnemyHasCondition':
       return { type, condition: 'asleep' };

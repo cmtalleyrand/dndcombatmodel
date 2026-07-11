@@ -297,6 +297,64 @@ export interface Feature {
   oncePerTurn?: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Timed effects — the general buff/debuff primitive
+// ---------------------------------------------------------------------------
+
+/** Who an action's timed effect lands on, relative to the actor and the action's chosen targets. */
+export type EffectTargetScope = 'self' | 'target' | 'allAllies' | 'allEnemies';
+
+/**
+ * A bundle of stat changes a {@link TimedEffect} imposes while active. Every field is optional
+ * and additive; an absent field means "no change". These are read *live* by the engine's stat
+ * resolvers, so when an effect ends it simply stops contributing — there are no baked-in deltas
+ * to unwind. This is what lets one primitive model Haste, Bless, Bane, Slow, Faerie Fire, etc.
+ */
+export interface EffectModifier {
+  /** additive AC while active (defensive buff; a negative value makes the bearer easier to hit). */
+  ac?: number;
+  /** additive to-hit on the bearer's own attack rolls. */
+  toHit?: number;
+  /** additive flat damage on the bearer's own attacks. */
+  damage?: number;
+  /** additive change to the bearer's movement speed (feet). */
+  speedDelta?: number;
+  /** overrides the bearer's movement speed entirely (feet); wins over speedDelta. */
+  speedOverride?: number;
+  /** grants advantage on the bearer's saving throws of these abilities (or all). */
+  saveAdvantage?: Ability[] | 'all';
+  /** imposes disadvantage on the bearer's saving throws of these abilities (or all). */
+  saveDisadvantage?: Ability[] | 'all';
+  /** advantage/disadvantage on the bearer's own attack rolls. */
+  attackAdvantage?: 'advantage' | 'disadvantage';
+  /** damage types the bearer resists (half damage) while active. */
+  resistances?: DamageType[];
+  /** conditions applied for the effect's lifetime (they share the effect's duration). */
+  grantConditions?: ConditionKind[];
+  /** damage dealt to the bearer at the start of each of its turns (a damage-over-time). */
+  dot?: { dice?: string; flat?: number; type: DamageType };
+}
+
+/**
+ * A durable, self-reverting buff or debuff an action applies. Reuses {@link DurationKind}, so a
+ * fixed length ("ends after 10 rounds") is `{ type: 'rounds', rounds: 10 }`, and it can equally
+ * be tied to concentration or a repeating save. `onExpire` fires when the effect ends — that's
+ * where Haste's end-of-spell lethargy lives.
+ */
+export interface TimedEffect {
+  /** stable id (assigned by the app for library effects). */
+  id?: string;
+  /** human label shown in the log/UI, e.g. "Haste". */
+  label?: string;
+  /** who the effect is applied to when the action resolves. */
+  target: EffectTargetScope;
+  modifier: EffectModifier;
+  /** lifetime: rounds N / concentration / saveEnds / permanent (see {@link DurationKind}). */
+  duration: DurationKind;
+  /** applied to the bearer when this effect ends (e.g. the Hasted creature's lethargy). */
+  onExpire?: { applyConditions: ConditionApplication[] };
+}
+
 /**
  * A reusable action. Stored in the action library and referenced by id from
  * combatant scripts. Movement and "move" use the simulator's 1D linear battlefield.
@@ -360,6 +418,22 @@ export interface Action {
   // --- conditions applied on hit / failed save ---
   applyConditions?: ConditionApplication[];
 
+  // --- timed buffs/debuffs applied when the action resolves (Haste, Bless, Slow, ...) ---
+  effects?: TimedEffect[];
+
+  // --- dynamic numbers: author formulas evaluated at resolution (see engine/expr.ts). ---
+  /**
+   * Each formula is evaluated against the actor/target context and ADDED to the corresponding
+   * derived value, so a save DC can scale with the caster's ability, or bonus damage with how
+   * hurt the target is. Static bonuses (saveDcBonus, damageBonus, ...) still apply on top.
+   */
+  dynamic?: {
+    saveDc?: string;
+    damageBonus?: string;
+    healBonus?: string;
+    toHitBonus?: string;
+  };
+
   // --- positioning: range & area of effect (linear, in feet) ---
   /** explicit range in feet; overrides the weapon's range for this action. */
   range?: number;
@@ -411,6 +485,8 @@ export type RuleConditionType =
   | 'roundAtMost'
   | 'notConcentrating'
   | 'anyEnemyConcentrating' // an enemy is concentrating (target it to break concentration)
+  | 'nearestEnemyWithin' // the nearest living enemy is within `value` feet (melee/kite triggers)
+  | 'nearestEnemyBeyond' // the nearest living enemy is more than `value` feet away
   | 'slotAvailable'; // requires a spell slot of the action's level
 
 export const RULE_CONDITION_TYPES: RuleConditionType[] = [
@@ -425,6 +501,8 @@ export const RULE_CONDITION_TYPES: RuleConditionType[] = [
   'roundAtMost',
   'notConcentrating',
   'anyEnemyConcentrating',
+  'nearestEnemyWithin',
+  'nearestEnemyBeyond',
   'slotAvailable',
 ];
 

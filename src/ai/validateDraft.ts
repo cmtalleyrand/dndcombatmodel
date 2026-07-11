@@ -7,6 +7,7 @@ import {
 } from '../engine/types';
 import { CONDITION_KINDS } from '../engine/conditions';
 import { isValidDiceFormula } from '../engine/dice';
+import { validateExpr } from '../engine/expr';
 import type { AIScenarioDraft } from './types';
 
 const RULE_CONDITION_SET = new Set<string>(RULE_CONDITION_TYPES);
@@ -14,6 +15,7 @@ const TARGET_STRATEGY_SET = new Set<string>(TARGET_STRATEGIES);
 const ABILITY_SET = new Set<string>(ABILITIES);
 const DAMAGE_TYPE_SET = new Set<string>(DAMAGE_TYPES);
 const CONDITION_SET = new Set<string>(CONDITION_KINDS);
+const EFFECT_SCOPE_SET = new Set<string>(['self', 'target', 'allAllies', 'allEnemies']);
 
 function norm(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -78,7 +80,49 @@ function actionDiceFormulas(action: Action): { field: string; value: string }[] 
   push('tempHp', action.tempHp);
   action.riders?.forEach((rider, i) => push(`riders[${i}].bonusDice`, rider.bonusDice));
   action.extraDamage?.forEach((extra, i) => push(`extraDamage[${i}].dice`, extra.dice));
+  action.effects?.forEach((effect, i) => push(`effects[${i}].dot.dice`, effect.modifier.dot?.dice));
   return out;
+}
+
+/** Validate a single timed-effect entry on an action (scope, modifier enums, duration). */
+function validateEffect(effect: NonNullable<Action['effects']>[number], where: string, errors: string[]): void {
+  if (!EFFECT_SCOPE_SET.has(effect.target)) {
+    errors.push(`${where} effect "${effect.label ?? '(unlabeled)'}" has invalid target scope: ${effect.target}`);
+  }
+  const mod = effect.modifier ?? {};
+  for (const key of ['saveAdvantage', 'saveDisadvantage'] as const) {
+    const list = mod[key];
+    if (Array.isArray(list)) {
+      for (const ability of list) {
+        if (!ABILITY_SET.has(ability)) errors.push(`${where} effect ${key} references invalid ability: ${ability}`);
+      }
+    } else if (list !== undefined && list !== 'all') {
+      errors.push(`${where} effect ${key} must be an ability list or "all"`);
+    }
+  }
+  for (const type of mod.resistances ?? []) {
+    if (!DAMAGE_TYPE_SET.has(type)) errors.push(`${where} effect has invalid resistance type: ${type}`);
+  }
+  if (mod.dot && !DAMAGE_TYPE_SET.has(mod.dot.type)) {
+    errors.push(`${where} effect has invalid damage-over-time type: ${mod.dot.type}`);
+  }
+  if (mod.attackAdvantage && mod.attackAdvantage !== 'advantage' && mod.attackAdvantage !== 'disadvantage') {
+    errors.push(`${where} effect has invalid attackAdvantage: ${mod.attackAdvantage}`);
+  }
+  for (const kind of mod.grantConditions ?? []) {
+    if (!CONDITION_SET.has(kind)) errors.push(`${where} effect grants unknown condition: ${kind}`);
+  }
+  const dur = effect.duration;
+  if (dur.type === 'rounds') {
+    if (!Number.isFinite(dur.rounds) || dur.rounds <= 0) errors.push(`${where} effect rounds duration must be a positive number`);
+  } else if (dur.type === 'saveEnds') {
+    if (!ABILITY_SET.has(dur.ability)) errors.push(`${where} effect save-ends uses invalid ability: ${dur.ability}`);
+  } else if (dur.type !== 'concentration' && dur.type !== 'permanent') {
+    errors.push(`${where} effect has invalid duration type: ${(dur as { type?: string }).type}`);
+  }
+  for (const app of effect.onExpire?.applyConditions ?? []) {
+    if (!CONDITION_SET.has(app.kind)) errors.push(`${where} effect onExpire applies unknown condition: ${app.kind}`);
+  }
 }
 
 /** Validate a single action's enum-typed fields and dice formulas. */
@@ -107,6 +151,14 @@ function validateAction(action: Action, errors: string[]): void {
     if (rider.condition && !CONDITION_SET.has(rider.condition)) {
       errors.push(`${where} rider references unknown condition: ${rider.condition}`);
     }
+  }
+  for (const effect of action.effects ?? []) {
+    validateEffect(effect, where, errors);
+  }
+  for (const [field, formula] of Object.entries(action.dynamic ?? {})) {
+    if (typeof formula !== 'string' || formula === '') continue;
+    const err = validateExpr(formula);
+    if (err) errors.push(`${where} dynamic.${field} formula is invalid: ${err}`);
   }
   for (const { field, value } of actionDiceFormulas(action)) {
     if (!isValidDiceFormula(value)) {
