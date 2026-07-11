@@ -58,12 +58,7 @@ export function loadScenario(): Scenario {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const s = JSON.parse(raw) as Scenario;
-      if (!s.weapons) s.weapons = SRD_WEAPONS; // back-compat for v1 scenarios
-      if (!s.targetLists) s.targetLists = []; // back-compat for Phase 1/2 scenarios
-      if (!s.ruleLibrary) s.ruleLibrary = DEFAULT_RULE_LIBRARY; // back-compat: prestock the rules library
-      if (!s.conditionLibrary) s.conditionLibrary = DEFAULT_CONDITION_LIBRARY; // back-compat: prestock the conditions library
-      return s;
+      return normalizeScenario(JSON.parse(raw) as Scenario);
     }
   } catch {
     // ignore corrupt storage
@@ -428,12 +423,18 @@ function normalizeScenario(parsed: Scenario): Scenario {
   if (!parsed.combatants || !parsed.actions) {
     throw new Error('Invalid scenario JSON: missing combatants or actions.');
   }
-  if (!parsed.weapons) parsed.weapons = SRD_WEAPONS;
-  if (!parsed.features) parsed.features = SRD_FEATURES;
-  if (!parsed.targetLists) parsed.targetLists = [];
-  if (!parsed.ruleLibrary) parsed.ruleLibrary = DEFAULT_RULE_LIBRARY;
-  if (!parsed.conditionLibrary) parsed.conditionLibrary = DEFAULT_CONDITION_LIBRARY;
+  parsed.weapons = mergeById(parsed.weapons, SRD_WEAPONS);
+  parsed.features = mergeById(parsed.features, SRD_FEATURES);
+  parsed.targetLists = parsed.targetLists ?? [];
+  parsed.ruleLibrary = mergeById(parsed.ruleLibrary, DEFAULT_RULE_LIBRARY);
+  parsed.conditionLibrary = mergeById(parsed.conditionLibrary, DEFAULT_CONDITION_LIBRARY);
   return sanitizeForExport(parsed) as Scenario;
+}
+
+function mergeById<T extends { id: string }>(current: T[] | undefined, defaults: T[]): T[] {
+  const existing = current ?? [];
+  const ids = new Set(existing.map((item) => item.id));
+  return [...existing, ...defaults.filter((item) => !ids.has(item.id))];
 }
 
 function sanitizeForExport(value: unknown): unknown {

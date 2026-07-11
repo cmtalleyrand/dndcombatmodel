@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ABILITIES, FEATURE_CATEGORY_LABELS, type Ability, type Combatant, type Scenario, type Side, type Skill } from '../engine/types';
-import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS, SRD_ACTIONS } from '../data/srd';
+import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS, SRD_ACTIONS, SRD_FEATURES } from '../data/srd';
 import {
   copyScript,
   deleteCombatantTemplate,
@@ -68,6 +68,13 @@ export function addCombatantWithDefaultActions(scenario: Scenario, combatant: Co
     ...SRD_ACTIONS.filter((action) => neededActionIds.has(action.id) && !existingActionIds.has(action.id)),
   ];
 
+  const existingFeatureIds = new Set((scenario.features ?? []).map((feature) => feature.id));
+  const neededFeatureIds = new Set(combatant.featureIds ?? []);
+  const features = [
+    ...(scenario.features ?? []),
+    ...SRD_FEATURES.filter((feature) => neededFeatureIds.has(feature.id) && !existingFeatureIds.has(feature.id)),
+  ];
+
   const existingWeaponIds = new Set(scenario.weapons.map((weapon) => weapon.id));
   const neededWeaponIds = new Set(
     actions
@@ -79,7 +86,7 @@ export function addCombatantWithDefaultActions(scenario: Scenario, combatant: Co
     ...SRD_WEAPONS.filter((weapon) => neededWeaponIds.has(weapon.id) && !existingWeaponIds.has(weapon.id)),
   ];
 
-  return upsertCombatant({ ...scenario, actions, weapons }, combatant);
+  return upsertCombatant({ ...scenario, actions, weapons, features }, combatant);
 }
 
 const SKILLS: { id: Skill; label: string }[] = [
@@ -104,18 +111,19 @@ const SKILLS: { id: Skill; label: string }[] = [
 ];
 
 function templatesForSide(side: Side): Combatant[] {
-  return side === 'pc' ? PC_LIBRARY : SAMPLE_MONSTERS;
+  return side === 'pc' ? PC_LIBRARY : [...SAMPLE_MONSTERS, ...PC_LIBRARY];
 }
 
-export function cloneStoredCombatant(template: Combatant, existing: Combatant[]): Combatant {
+export function cloneStoredCombatant(template: Combatant, existing: Combatant[], side: Side = template.side): Combatant {
   const sameBase = existing.filter(
     (c) => c.name === template.name || c.name.startsWith(`${template.name} `),
   );
   const suffix = sameBase.length + 1;
   return {
     ...template,
-    id: genId(template.side),
-    name: sameBase.length === 0 ? template.name : `${template.name} ${suffix}`,
+    id: genId(side),
+    name: side === template.side && sameBase.length === 0 ? template.name : `${template.name}${sameBase.length === 0 ? '' : ` ${suffix}`}`,
+    side,
     actionIds: [...template.actionIds],
     saveProficiencies: [...template.saveProficiencies],
     abilityScores: { ...template.abilityScores },
@@ -143,7 +151,7 @@ export function CombatantsTab({ side, scenario, setScenario }: Props) {
       return;
     }
     const template = templates.find((c) => c.id === templateId);
-    const c = template ? cloneStoredCombatant(template, scenario.combatants) : blankCombatant(side);
+    const c = template ? cloneStoredCombatant(template, scenario.combatants, side) : blankCombatant(side);
     setScenario(template ? addCombatantWithDefaultActions(scenario, c) : upsertCombatant(scenario, c));
     setOpenId(c.id);
   };
@@ -290,7 +298,7 @@ function CombatantCard({
               }))) {
                 return;
               }
-              const replacement = cloneStoredCombatant(template, scenario.combatants.filter((c) => c.id !== combatant.id));
+              const replacement = cloneStoredCombatant(template, scenario.combatants.filter((c) => c.id !== combatant.id), combatant.side);
               setScenario(upsertCombatant(scenario, { ...replacement, id: combatant.id, position: combatant.position }));
             }}
             aria-label={`Change ${combatant.side === 'pc' ? 'PC' : 'monster'} to preset`}

@@ -26,7 +26,7 @@ describe('stored combatant templates', () => {
     expect(template.script[0].target.strategy).toBe('nearestEnemy');
   });
 
-  it('adds missing default actions and weapons when a preset combatant is inserted', () => {
+  it('adds missing default actions, weapons, and features when a preset combatant is inserted', () => {
     const template = SAMPLE_MONSTERS[0];
     const scenario = { ...defaultScenario(), combatants: [], actions: [], weapons: [] };
 
@@ -34,7 +34,20 @@ describe('stored combatant templates', () => {
 
     expect(next.actions.map((action) => action.id)).toEqual(template.actionIds);
     expect(next.weapons.map((weapon) => weapon.id)).toContain('wpn-scimitar');
+    for (const featureId of template.featureIds ?? []) {
+      expect(next.features?.some((feature) => feature.id === featureId)).toBe(true);
+    }
     expect(validateCombatant(next.combatants[0], next)).toEqual([]);
+  });
+
+  it('can clone a PC preset onto the monster side', () => {
+    const template = LEVEL_3_CLASS_PCS[0];
+    const clone = cloneStoredCombatant(template, [], 'monster');
+
+    expect(clone.side).toBe('monster');
+    expect(clone.id).toMatch(/^monster-/);
+    expect(clone.actionIds).toEqual(template.actionIds);
+    expect(clone.script[0].target.strategy).toBe('nearestEnemy');
   });
 
   it('level 3 PC presets use subclass-first names with level suffixes', () => {

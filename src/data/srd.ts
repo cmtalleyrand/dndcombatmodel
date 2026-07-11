@@ -557,7 +557,56 @@ export const SRD_ACTIONS: Action[] = [
   },
 ];
 
+
+const weaponActionIds = WEAPON_ATTACK_ACTIONS.map((action) => action.id);
+const magicWeaponFeature = (bonus: 1 | 2 | 3): Feature => ({
+  id: `feat-magic-weapon-${bonus}`,
+  name: `Magic Weapon +${bonus}`,
+  category: 'itemEffect',
+  timing: 'beforeAttackRoll',
+  attackModifier: { toHit: bonus, damage: bonus, label: `+${bonus} magic weapon` },
+  actionIds: weaponActionIds,
+});
+const magicArmorFeature = (bonus: 1 | 2 | 3): Feature => ({
+  id: `feat-magic-armor-${bonus}`,
+  name: `Magic Armor +${bonus}`,
+  category: 'itemEffect',
+  timing: 'beforeAttackRoll',
+  attackModifier: { ac: bonus, label: `+${bonus} magic armor` },
+});
+
+const MAGIC_ITEM_FEATURES: Feature[] = [
+  magicWeaponFeature(1),
+  magicWeaponFeature(2),
+  magicWeaponFeature(3),
+  magicArmorFeature(1),
+  magicArmorFeature(2),
+  magicArmorFeature(3),
+  { id: 'feat-flame-tongue', name: 'Flame Tongue', category: 'itemEffect', timing: 'onHit', extraDamage: [{ dice: '2d6', type: 'fire', label: 'Flame Tongue' }], actionIds: weaponActionIds },
+  { id: 'feat-frost-brand', name: 'Frost Brand', category: 'itemEffect', timing: 'onHit', extraDamage: [{ dice: '1d6', type: 'cold', label: 'Frost Brand' }], actionIds: weaponActionIds },
+  { id: 'feat-vicious-weapon', name: 'Vicious Weapon', category: 'itemEffect', timing: 'onHit', extraDamage: [{ dice: '2d6', type: 'force', label: 'Vicious Weapon' }], actionIds: weaponActionIds, oncePerTurn: true },
+  { id: 'feat-javelin-of-lightning', name: 'Javelin of Lightning', category: 'itemEffect', timing: 'onHit', resource: { id: 'javelin-lightning-use', max: 1 }, spend: { resourceId: 'javelin-lightning-use', amount: 1, trigger: 'onHit' }, extraDamage: [{ dice: '4d6', type: 'lightning', label: 'Lightning bolt' }], actionIds: ['act-javelin'] },
+  { id: 'feat-dagger-of-venom', name: 'Dagger of Venom', category: 'itemEffect', timing: 'onHit', resource: { id: 'dagger-venom-use', max: 1 }, spend: { resourceId: 'dagger-venom-use', amount: 1, trigger: 'onHit' }, extraDamage: [{ dice: '2d10', type: 'poison', label: 'Venom' }], applyConditions: [{ kind: 'poisoned', duration: { type: 'rounds', rounds: 10 } }], actionIds: ['act-dagger', 'act-dagger-thrown'] },
+  { id: 'feat-holy-avenger', name: 'Holy Avenger', category: 'itemEffect', timing: 'onHit', extraDamage: [{ dice: '2d10', type: 'radiant', label: 'Holy Avenger' }], actionIds: weaponActionIds },
+  { id: 'feat-sun-blade', name: 'Sun Blade', category: 'itemEffect', timing: 'onHit', extraDamage: [{ dice: '1d8', type: 'radiant', label: 'Sun Blade' }], actionIds: ['act-longsword', 'act-longsword-versatile', 'act-longsword-2x'] },
+  { id: 'feat-mace-of-disruption', name: 'Mace of Disruption', category: 'itemEffect', timing: 'onHit', extraDamage: [{ dice: '2d6', type: 'radiant', label: 'Disruption' }], actionIds: ['act-mace'] },
+  { id: 'feat-mace-of-smiting', name: 'Mace of Smiting', category: 'itemEffect', timing: 'onHit', extraDamage: [{ dice: '2d6', type: 'force', label: 'Smiting' }], actionIds: ['act-mace'] },
+  { id: 'feat-weapon-of-warning', name: 'Weapon of Warning', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { advantage: 'advantage', label: 'Warning' }, actionIds: weaponActionIds, oncePerTurn: true },
+  { id: 'feat-bracers-of-archery', name: 'Bracers of Archery', category: 'itemEffect', timing: 'onHit', extraDamage: [{ flat: 2, type: 'piercing', label: 'Bracers of Archery' }], actionIds: ['act-shortbow', 'act-longbow', 'act-rogue-shortbow', 'act-longbow-hunters-mark'] },
+  { id: 'feat-wand-of-war-mage-1', name: 'Wand of the War Mage +1', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 1, label: '+1 spell focus' } },
+  { id: 'feat-wand-of-war-mage-2', name: 'Wand of the War Mage +2', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 2, label: '+2 spell focus' } },
+  { id: 'feat-wand-of-war-mage-3', name: 'Wand of the War Mage +3', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 3, label: '+3 spell focus' } },
+  { id: 'feat-rod-of-pact-keeper-1', name: 'Rod of the Pact Keeper +1', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 1, saveDc: 1, label: '+1 pact focus' } },
+  { id: 'feat-rod-of-pact-keeper-2', name: 'Rod of the Pact Keeper +2', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 2, saveDc: 2, label: '+2 pact focus' } },
+  { id: 'feat-rod-of-pact-keeper-3', name: 'Rod of the Pact Keeper +3', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 3, saveDc: 3, label: '+3 pact focus' } },
+  { id: 'feat-staff-of-power', name: 'Staff of Power', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 2, damage: 2, saveDc: 2, label: 'Staff of Power' }, actionIds: ['act-quarterstaff', 'act-quarterstaff-versatile'] },
+  { id: 'feat-ring-of-protection', name: 'Ring of Protection', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { ac: 1, label: 'Ring of Protection' } },
+  { id: 'feat-cloak-of-protection', name: 'Cloak of Protection', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { ac: 1, label: 'Cloak of Protection' } },
+  { id: 'feat-stone-of-good-luck', name: 'Stone of Good Luck', category: 'itemEffect', timing: 'beforeAttackRoll', attackModifier: { toHit: 1, label: 'Good luck' }, oncePerTurn: true },
+];
+
 export const SRD_FEATURES: Feature[] = [
+  ...MAGIC_ITEM_FEATURES,
 
   {
     id: 'feat-blindness-deafness-blinded',
