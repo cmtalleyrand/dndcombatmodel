@@ -137,6 +137,30 @@ describe('SRD graph validity', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('feature library exposes magic item and enhancement features', () => {
+    const itemFeatures = SRD_FEATURES.filter((feature) => feature.category === 'itemEffect');
+    const ids = new Set(SRD_FEATURES.map((feature) => feature.id));
+
+    expect(itemFeatures.length).toBeGreaterThanOrEqual(26);
+    for (const id of ['feat-magic-weapon-1', 'feat-magic-weapon-2', 'feat-magic-weapon-3', 'feat-magic-armor-1', 'feat-magic-armor-2', 'feat-magic-armor-3']) {
+      expect(ids.has(id)).toBe(true);
+    }
+  });
+
+  it('all features are unique', () => {
+    const ids = SRD_FEATURES.map((feature) => feature.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('every preset PC and monster can be simulated on either side', () => {
+    for (const template of [...LEVEL_1_CLASS_PCS, ...LEVEL_3_CLASS_PCS, ...SAMPLE_MONSTERS]) {
+      const pc = { ...template, id: `${template.id}-pc-test`, side: 'pc' as const };
+      const monster = { ...template, id: `${template.id}-monster-test`, side: 'monster' as const };
+      expect(() => runSimulation({ ...defaultScenario(), combatants: [pc, monster] }, 2025)).not.toThrow();
+    }
+  });
+
   it('all weapon ids are unique', () => {
     const ids = SRD_WEAPONS.map((weapon) => weapon.id);
 
