@@ -51,6 +51,7 @@ Engine internals, if you need to trace a turn: `simulator.ts` drives the round l
 
 ## Invariants — don't break these
 
+- **Rules edition.** Curated content targets D&D 2024 (rules glossary / 2024 PHB & MM). Do not add 2014-only spell, monster, or class mechanics to `src/data/srd.ts` unless explicitly modeling a legacy/imported scenario.
 - **Determinism.** The same seed + scenario must always produce the identical
   `RunResult`. All randomness goes through the seeded `RNG` in `dice.ts`; never call
   `Math.random()` inside the engine (UI-only id generation in `state/store.ts`'s
@@ -86,7 +87,7 @@ Engine internals, if you need to trace a turn: `simulator.ts` drives the round l
   `Combatant.resistances/immunities/vulnerabilities/conditionImmunities` +
   `damageMultiplier` in `engine/actions.ts`, and `rollDeathSave` in
   `engine/simulator.ts` — so don't re-add them; the remaining resistance work is
-  conditional/situational riders, not the basic matrix.)
+  conditional/situational features, not the basic matrix.)
 - **AI authoring is a core feature**, not experimental — it's a first-class way to
   build a scenario, on par with the manual editors. The prompt contract in
   `ai/schemaPrompt.ts` (`AI_GENERATION_SYSTEM_PROMPT`, the `AIScenarioDraft` shape)

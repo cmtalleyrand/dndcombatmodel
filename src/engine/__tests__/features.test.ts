@@ -3,6 +3,7 @@ import { performAction } from '../actions';
 import { runSimulation } from '../simulator';
 import { RNG } from '../dice';
 import { fixtureAction, fixtureCombatant, fixtureScenario, fixtureState, fixtureWeapon, scriptedCombatant } from '../../test/fixtures';
+import { SRD_ACTIONS, SRD_FEATURES } from '../../data/srd';
 import type { LogEvent } from '../log';
 import type { Feature } from '../types';
 
@@ -165,6 +166,35 @@ describe('composable attack features', () => {
     performAction(state, new RNG(58), state.combatants[0], longbowAttack, [state.combatants[1]], events);
 
     expect(events.some((event) => event.message.includes('Marked Shot: +5 force damage'))).toBe(true);
+  });
+
+
+  it("applies migrated SRD Sneak Attack, Rage, and Hunter's Mark through features", () => {
+    const rogueShot = SRD_ACTIONS.find((action) => action.id === 'act-rogue-shortbow')!;
+    const rageAttack = SRD_ACTIONS.find((action) => action.id === 'act-greataxe-rage')!;
+    const markShot = SRD_ACTIONS.find((action) => action.id === 'act-longbow-hunters-mark')!;
+    const state = fixtureState(
+      [
+        fixtureCombatant('rogue', 'pc', { actionIds: [rogueShot.id], featureIds: ['feat-sneak-attack'], position: 0, abilityScores: { str: 10, dex: 20, con: 10, int: 10, wis: 10, cha: 10 } }),
+        fixtureCombatant('barbarian', 'pc', { actionIds: [rageAttack.id], featureIds: ['feat-rage-damage'], position: 0, abilityScores: { str: 20, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } }),
+        fixtureCombatant('ranger', 'pc', { actionIds: [markShot.id], featureIds: ['feat-hunters-mark'], position: 0, abilityScores: { str: 10, dex: 20, con: 10, int: 10, wis: 10, cha: 10 } }),
+        fixtureCombatant('target', 'monster', { maxHp: 200, ac: 1, position: 0 }),
+        fixtureCombatant('ally', 'pc', { position: 0 }),
+      ],
+      [rogueShot, rageAttack, markShot],
+      { weapons: [longbow, fixtureWeapon({ id: 'wpn-shortbow', name: 'Shortbow', damage: '1d6', damageType: 'piercing', properties: ['ranged'], range: 80 }), fixtureWeapon({ id: 'wpn-greataxe', name: 'Greataxe', damage: '1d12', damageType: 'slashing', properties: ['heavy', 'twoHanded'], range: 5 })], features: SRD_FEATURES },
+    );
+    state.combatants[1].conditions.push({ kind: 'raging', duration: { type: 'permanent' } });
+    state.combatants[3].conditions.push({ kind: 'marked', duration: { type: 'permanent' } });
+    const events: LogEvent[] = [];
+
+    performAction(state, new RNG(1), state.combatants[0], rogueShot, [state.combatants[3]], events);
+    performAction(state, new RNG(1), state.combatants[1], rageAttack, [state.combatants[3]], events);
+    performAction(state, new RNG(1), state.combatants[2], markShot, [state.combatants[3]], events);
+
+    expect(events.some((event) => event.message.includes('Sneak Attack'))).toBe(true);
+    expect(events.some((event) => event.message.includes('Rage Damage'))).toBe(true);
+    expect(events.some((event) => event.message.includes("Hunter's Mark"))).toBe(true);
   });
 
 });

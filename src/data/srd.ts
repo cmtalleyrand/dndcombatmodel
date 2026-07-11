@@ -2,7 +2,7 @@
 // and a default scenario that demonstrates scripting (priorities, conditions, targets).
 
 import { DEFAULT_ENCOUNTER_DISTANCE, defaultPosition } from '../engine/state';
-import type { Action, Combatant, ConditionPreset, RuleTemplate, Scenario } from '../engine/types';
+import type { Action, Combatant, ConditionPreset, Feature, RuleTemplate, Scenario } from '../engine/types';
 import { SRD_WEAPONS } from './weapons';
 
 const defaultPcPosition = (rankFromFront: number) => defaultPosition('pc', rankFromFront, DEFAULT_ENCOUNTER_DISTANCE);
@@ -235,9 +235,9 @@ const SPELL_AND_ABILITY_ACTIONS: Action[] = [
     kind: 'spell',
     targets: 1,
     spellLevel: 1,
-    spellAttack: true,
     range: 5,
-    damage: '3d10',
+    damage: '2d10',
+    save: { ability: 'con', onSuccess: 'none' },
     damageType: 'necrotic',
   },
   {
@@ -482,14 +482,6 @@ export const SRD_ACTIONS: Action[] = [
     targets: 1,
     weaponId: 'wpn-shortbow',
     attackCount: 1,
-    riders: [
-      {
-        label: 'Sneak Attack',
-        bonusDice: '2d6',
-        trigger: 'advantageOrAllyAdjacent',
-        oncePerTurn: true,
-      },
-    ],
     note: '+2d6 once per turn when you have advantage or an ally is adjacent to the target.',
   },
   {
@@ -499,15 +491,6 @@ export const SRD_ACTIONS: Action[] = [
     targets: 1,
     weaponId: 'wpn-greataxe',
     attackCount: 1,
-    riders: [
-      {
-        label: 'Rage Damage',
-        bonusFlat: 2,
-        trigger: 'selfHasCondition',
-        condition: 'raging',
-        meleeOnly: true,
-      },
-    ],
     note: '+2 damage while raging.',
   },
   {
@@ -517,14 +500,6 @@ export const SRD_ACTIONS: Action[] = [
     targets: 1,
     weaponId: 'wpn-longbow',
     attackCount: 1,
-    riders: [
-      {
-        label: "Hunter's Mark",
-        bonusDice: '1d6',
-        trigger: 'targetHasCondition',
-        condition: 'marked',
-      },
-    ],
     note: '+1d6 when the target is marked.',
   },
   {
@@ -582,6 +557,34 @@ export const SRD_ACTIONS: Action[] = [
     damageType: 'slashing',
     applyConditions: [{ kind: 'paralyzed', duration: { type: 'saveEnds', ability: 'con', dc: 10 } }],
     note: 'On a hit the target is paralyzed (DC 10 Con save ends at end of each of its turns).',
+  },
+];
+
+export const SRD_FEATURES: Feature[] = [
+  {
+    id: 'feat-sneak-attack',
+    name: 'Sneak Attack',
+    timing: 'onHit',
+    condition: { trigger: 'advantageOrAllyAdjacent' },
+    extraDamage: [{ dice: '2d6', type: 'piercing', label: 'Sneak Attack' }],
+    actionIds: ['act-rogue-shortbow'],
+    oncePerTurn: true,
+  },
+  {
+    id: 'feat-rage-damage',
+    name: 'Rage Damage',
+    timing: 'onHit',
+    condition: { trigger: 'selfHasCondition', condition: 'raging', meleeOnly: true },
+    extraDamage: [{ flat: 2, type: 'slashing', label: 'Rage Damage' }],
+    actionIds: ['act-greataxe-rage'],
+  },
+  {
+    id: 'feat-hunters-mark',
+    name: "Hunter's Mark",
+    timing: 'onHit',
+    condition: { trigger: 'targetHasCondition', condition: 'marked' },
+    extraDamage: [{ dice: '1d6', type: 'piercing', label: "Hunter's Mark" }],
+    actionIds: ['act-longbow-hunters-mark'],
   },
 ];
 
@@ -851,6 +854,7 @@ export const SAMPLE_PCS: Combatant[] = [
     position: defaultPcPosition(1),
     speed: 30,
     actionIds: ['act-hunters-mark', 'act-longbow-hunters-mark'],
+    featureIds: ['feat-hunters-mark'],
     spellSlots: { 1: 3 },
     script: [
       {
@@ -881,6 +885,7 @@ export const SAMPLE_PCS: Combatant[] = [
     position: defaultPcPosition(0),
     speed: 40,
     actionIds: ['act-rage', 'act-greataxe-rage'],
+    featureIds: ['feat-rage-damage'],
     spellSlots: {},
     script: [
       {
@@ -911,6 +916,7 @@ export const SAMPLE_PCS: Combatant[] = [
     position: defaultPcPosition(1),
     speed: 30,
     actionIds: ['act-rogue-shortbow'],
+    featureIds: ['feat-sneak-attack'],
     spellSlots: {},
     script: [
       {
@@ -939,6 +945,7 @@ type LibraryPcSpec = {
   saveProficiencies: Combatant['saveProficiencies'];
   spellcastingAbility?: Combatant['spellcastingAbility'];
   spellSlots?: Combatant['spellSlots'];
+  featureIds?: string[];
 };
 
 function makeLibraryPc(spec: LibraryPcSpec): Combatant {
@@ -956,6 +963,7 @@ function makeLibraryPc(spec: LibraryPcSpec): Combatant {
     speed: spec.className === 'Monk' || spec.className === 'Barbarian' ? 40 : 30,
     actionIds: spec.actionIds,
     spellSlots: spec.spellSlots ?? {},
+    featureIds: spec.featureIds,
     script: [
       {
         priority: 1,
@@ -984,15 +992,15 @@ export const LEVEL_1_CLASS_PCS: Combatant[] = [
 ];
 
 export const LEVEL_3_CLASS_PCS: Combatant[] = [
-  makeLibraryPc({ className: 'Barbarian', subclass: 'Berserker', level: 3, maxHp: 35, ac: 14, abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-rage', 'act-greataxe-rage'], primaryActionId: 'act-greataxe-rage' }),
+  makeLibraryPc({ className: 'Barbarian', subclass: 'Berserker', level: 3, featureIds: ['feat-rage-damage'], maxHp: 35, ac: 14, abilityScores: { str: 16, dex: 14, con: 15, int: 8, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-rage', 'act-greataxe-rage'], primaryActionId: 'act-greataxe-rage' }),
   makeLibraryPc({ className: 'Bard', subclass: 'College of Lore', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 8, dex: 14, con: 14, int: 12, wis: 10, cha: 16 }, saveProficiencies: ['dex', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-dagger', 'act-thunderwave', 'act-shatter'], primaryActionId: 'act-shatter' }),
   makeLibraryPc({ className: 'Cleric', subclass: 'Life Domain', level: 3, maxHp: 24, ac: 18, abilityScores: { str: 14, dex: 10, con: 14, int: 10, wis: 16, cha: 12 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-mace', 'act-sacred-flame', 'act-cure-wounds', 'act-guiding-bolt'], primaryActionId: 'act-guiding-bolt' }),
   makeLibraryPc({ className: 'Druid', subclass: 'Circle of the Moon', level: 3, maxHp: 24, ac: 14, abilityScores: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 8 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'wis', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-quarterstaff', 'act-moonbeam', 'act-cure-wounds'], primaryActionId: 'act-moonbeam' }),
   makeLibraryPc({ className: 'Fighter', subclass: 'Battlemaster', additionalInfo: 'Sword and Board', level: 3, maxHp: 31, ac: 18, abilityScores: { str: 16, dex: 12, con: 15, int: 10, wis: 12, cha: 10 }, saveProficiencies: ['str', 'con'], actionIds: ['act-longsword', 'act-heavy-crossbow'], primaryActionId: 'act-longsword' }),
   makeLibraryPc({ className: 'Monk', subclass: 'Way of the Open Hand', level: 3, maxHp: 24, ac: 15, abilityScores: { str: 12, dex: 16, con: 14, int: 10, wis: 14, cha: 8 }, saveProficiencies: ['str', 'dex'], actionIds: ['act-quarterstaff', 'act-dart'], primaryActionId: 'act-quarterstaff' }),
   makeLibraryPc({ className: 'Paladin', subclass: 'Oath of Devotion', level: 3, maxHp: 28, ac: 18, abilityScores: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 14 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 3 }, actionIds: ['act-longsword', 'act-javelin'], primaryActionId: 'act-longsword' }),
-  makeLibraryPc({ className: 'Ranger', subclass: 'Hunter', additionalInfo: 'Archer', level: 3, maxHp: 28, ac: 15, abilityScores: { str: 11, dex: 16, con: 14, int: 10, wis: 14, cha: 10 }, saveProficiencies: ['str', 'dex'], spellcastingAbility: 'wis', spellSlots: { 1: 3 }, actionIds: ['act-hunters-mark', 'act-longbow-hunters-mark'], primaryActionId: 'act-longbow-hunters-mark' }),
-  makeLibraryPc({ className: 'Rogue', subclass: 'Thief', additionalInfo: 'Archer', level: 3, maxHp: 22, ac: 15, abilityScores: { str: 10, dex: 16, con: 12, int: 12, wis: 13, cha: 14 }, saveProficiencies: ['dex', 'int'], actionIds: ['act-rogue-shortbow'], primaryActionId: 'act-rogue-shortbow' }),
+  makeLibraryPc({ className: 'Ranger', subclass: 'Hunter', additionalInfo: 'Archer', level: 3, featureIds: ['feat-hunters-mark'], maxHp: 28, ac: 15, abilityScores: { str: 11, dex: 16, con: 14, int: 10, wis: 14, cha: 10 }, saveProficiencies: ['str', 'dex'], spellcastingAbility: 'wis', spellSlots: { 1: 3 }, actionIds: ['act-hunters-mark', 'act-longbow-hunters-mark'], primaryActionId: 'act-longbow-hunters-mark' }),
+  makeLibraryPc({ className: 'Rogue', subclass: 'Thief', additionalInfo: 'Archer', level: 3, featureIds: ['feat-sneak-attack'], maxHp: 22, ac: 15, abilityScores: { str: 10, dex: 16, con: 12, int: 12, wis: 13, cha: 14 }, saveProficiencies: ['dex', 'int'], actionIds: ['act-rogue-shortbow'], primaryActionId: 'act-rogue-shortbow' }),
   makeLibraryPc({ className: 'Sorcerer', subclass: 'Draconic Bloodline', level: 3, maxHp: 20, ac: 12, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['con', 'cha'], spellcastingAbility: 'cha', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-scorching-ray', 'act-shatter'], primaryActionId: 'act-scorching-ray' }),
   makeLibraryPc({ className: 'Warlock', subclass: 'Fiend Patron', level: 3, maxHp: 24, ac: 13, abilityScores: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 16 }, saveProficiencies: ['wis', 'cha'], spellcastingAbility: 'cha', spellSlots: { 2: 2 }, actionIds: ['act-fire-bolt', 'act-hellish-rebuke', 'act-shatter'], primaryActionId: 'act-shatter' }),
   makeLibraryPc({ className: 'Wizard', subclass: 'Evocation', level: 3, maxHp: 18, ac: 12, abilityScores: { str: 8, dex: 14, con: 13, int: 16, wis: 11, cha: 10 }, saveProficiencies: ['int', 'wis'], spellcastingAbility: 'int', spellSlots: { 1: 4, 2: 2 }, actionIds: ['act-fire-bolt', 'act-magic-missile', 'act-scorching-ray'], primaryActionId: 'act-scorching-ray' }),
@@ -1243,6 +1251,7 @@ export function defaultScenario(): Scenario {
     combatants: [...SAMPLE_PCS, ...monsters],
     actions: SRD_ACTIONS,
     weapons: SRD_WEAPONS,
+    features: SRD_FEATURES,
     targetLists: [
       // reusable list referenced by the fighter: focus the orcs, then nearest enemy
       { id: 'tl-orcs-first', name: 'Orcs first', entries: ['m-orc1', 'm-orc2'], fallback: 'nearestEnemy' },

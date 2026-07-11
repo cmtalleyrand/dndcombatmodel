@@ -7,6 +7,7 @@ import {
   LEVEL_3_CLASS_PCS,
   SAMPLE_MONSTERS,
   SRD_ACTIONS,
+  SRD_FEATURES,
 } from '../srd';
 import { CONDITION_KINDS } from '../../engine/conditions';
 import { runSimulation } from '../../engine/simulator';
@@ -38,6 +39,44 @@ describe('default scenario', () => {
 
     const statIds = new Set(stats.combatants.map((combatant) => combatant.id));
     expect(statIds).toEqual(new Set(s.combatants.map((combatant) => combatant.id)));
+  });
+
+
+  it('uses feature-backed SRD rider examples and 2024 Inflict Wounds', () => {
+    const scenario = defaultScenario();
+    const actionsById = new Map(SRD_ACTIONS.map((action) => [action.id, action]));
+    const featuresById = new Map(SRD_FEATURES.map((feature) => [feature.id, feature]));
+
+    expect(actionsById.get('act-rogue-shortbow')?.riders).toBeUndefined();
+    expect(actionsById.get('act-greataxe-rage')?.riders).toBeUndefined();
+    expect(actionsById.get('act-longbow-hunters-mark')?.riders).toBeUndefined();
+
+    expect(featuresById.get('feat-sneak-attack')).toMatchObject({
+      timing: 'onHit',
+      condition: { trigger: 'advantageOrAllyAdjacent' },
+      actionIds: ['act-rogue-shortbow'],
+      oncePerTurn: true,
+    });
+    expect(featuresById.get('feat-rage-damage')).toMatchObject({
+      timing: 'onHit',
+      condition: { trigger: 'selfHasCondition', condition: 'raging', meleeOnly: true },
+      actionIds: ['act-greataxe-rage'],
+    });
+    expect(featuresById.get('feat-hunters-mark')).toMatchObject({
+      timing: 'onHit',
+      condition: { trigger: 'targetHasCondition', condition: 'marked' },
+      actionIds: ['act-longbow-hunters-mark'],
+    });
+
+    expect(scenario.combatants.find((combatant) => combatant.id === 'pc-rogue')?.featureIds).toContain('feat-sneak-attack');
+    expect(scenario.combatants.find((combatant) => combatant.id === 'pc-barbarian')?.featureIds).toContain('feat-rage-damage');
+    expect(scenario.combatants.find((combatant) => combatant.id === 'pc-ranger')?.featureIds).toContain('feat-hunters-mark');
+
+    expect(actionsById.get('act-inflict-wounds')).toMatchObject({
+      damage: '2d10',
+      save: { ability: 'con', onSuccess: 'none' },
+    });
+    expect(actionsById.get('act-inflict-wounds')?.spellAttack).toBeUndefined();
   });
 
   it('weapon library exposes mastery traits and reusable weapon attack actions', () => {

@@ -34,6 +34,7 @@ export function InitiativeTab({ scenario, setScenario }: Props) {
    <div>
     <div className="panel">
       <h2>Scenario</h2>
+      <p className="help">Rules edition: D&amp;D 2024 (rules glossary / 2024 PHB &amp; MM).</p>
       <div className="row">
         <label style={{ flexGrow: 1 }}>
           Name
