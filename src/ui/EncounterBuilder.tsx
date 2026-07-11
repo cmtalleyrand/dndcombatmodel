@@ -35,7 +35,6 @@ export interface EncounterForm {
   distance: string;
   positioning: string;
   tactics: string;
-  goal: string;
 }
 
 export function emptyPC(): BuilderPC {
@@ -47,7 +46,7 @@ export function emptyMonster(): BuilderMonster {
 }
 
 export function emptyEncounterForm(): EncounterForm {
-  return { pcs: [emptyPC()], monsters: [emptyMonster()], distance: '', positioning: '', tactics: '', goal: '' };
+  return { pcs: [emptyPC()], monsters: [emptyMonster()], distance: '', positioning: '', tactics: '' };
 }
 
 function pcHasContent(pc: BuilderPC): boolean {
@@ -62,7 +61,7 @@ export function encounterFormHasContent(form: EncounterForm): boolean {
   return (
     form.pcs.some(pcHasContent) ||
     form.monsters.some(monsterHasContent) ||
-    Boolean(form.distance || form.positioning || form.tactics || form.goal)
+    Boolean(form.distance || form.positioning || form.tactics)
   );
 }
 
@@ -103,7 +102,6 @@ export function buildEncounterDescription(form: EncounterForm): string {
   if (battlefield.length) blocks.push(`Battlefield: ${battlefield.join(' ')}`);
 
   if (form.tactics) blocks.push(`Tactics & priorities:\n${form.tactics}`);
-  if (form.goal) blocks.push(`What this simulation should answer: ${form.goal}`);
 
   return blocks.join('\n\n');
 }
@@ -257,10 +255,6 @@ export function EncounterBuilder({ form, setForm, disabled }: Props) {
             onChange={(e) => patch({ tactics: e.target.value })}
             style={{ minHeight: '4.5rem' }}
           />
-        </label>
-        <label style={{ width: '100%', marginTop: '0.5rem' }}>
-          What should this simulation answer?
-          <input value={form.goal} disabled={disabled} placeholder="Party win rate and average rounds to victory" onChange={(e) => patch({ goal: e.target.value })} />
         </label>
       </div>
     </div>

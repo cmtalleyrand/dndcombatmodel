@@ -164,6 +164,30 @@ describe('persistent combatant template library', () => {
     expect(remaining).toHaveLength(0);
     expect(loadCombatantTemplates()).toHaveLength(0);
   });
+
+  it('saves a combatant with its features and brings them along when re-applied', () => {
+    const base = defaultScenario();
+    const feature = { id: 'feat-rage', name: 'Rage', timing: 'onHit' as const, extraDamage: [{ flat: 2, type: 'slashing' as const, label: 'Rage' }] };
+    const source = { ...base.combatants.find((c) => c.side === 'pc')!, featureIds: [feature.id] };
+    const scenario = { ...base, features: [...(base.features ?? []), feature], combatants: base.combatants.map((c) => (c.id === source.id ? source : c)) };
+
+    const [tpl] = saveCombatantTemplate(scenario, source, 'Barbarian');
+    expect(tpl.features.map((f) => f.id)).toEqual(['feat-rage']);
+
+    // Applying into a scenario that lacks the feature merges it in (not just the actions).
+    const empty = { ...defaultScenario(), combatants: [], actions: [], weapons: [], features: [] };
+    const merged = mergeTemplateLibrary(empty, tpl);
+    expect(merged.features?.some((f) => f.id === 'feat-rage')).toBe(true);
+  });
+
+  it('defaults features to [] for templates saved before the field existed', () => {
+    const legacy = [{ id: 'ctmpl-old', name: 'Old', side: 'pc', combatant: defaultScenario().combatants[0], actions: [], weapons: [] }];
+    localStorage.setItem('dnd-combat-sim:combatant-templates:v1', JSON.stringify(legacy));
+    const loaded = loadCombatantTemplates();
+    expect(loaded[0].features).toEqual([]);
+    // And merging such a template must not throw on the missing field.
+    expect(() => mergeTemplateLibrary(defaultScenario(), loaded[0])).not.toThrow();
+  });
 });
 
 describe('back-compat: importing an old scenario without library fields', () => {

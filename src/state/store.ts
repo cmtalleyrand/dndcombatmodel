@@ -34,6 +34,7 @@ export interface CombatantTemplate {
   combatant: Combatant;
   actions: Action[];
   weapons: Weapon[];
+  features: Feature[];
 }
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
@@ -276,7 +277,8 @@ export function deletePreset(id: string): ScriptPreset[] {
 export function loadCombatantTemplates(): CombatantTemplate[] {
   try {
     const raw = localStorage.getItem(COMBATANT_TEMPLATES_KEY);
-    if (raw) return JSON.parse(raw) as CombatantTemplate[];
+    // Templates saved before the `features` field existed must keep loading; default it.
+    if (raw) return (JSON.parse(raw) as CombatantTemplate[]).map((t) => ({ ...t, features: t.features ?? [] }));
   } catch {
     // ignore corrupt storage
   }
@@ -297,6 +299,8 @@ export function saveCombatantTemplate(scenario: Scenario, combatant: Combatant, 
   const actions = scenario.actions.filter((a) => combatant.actionIds.includes(a.id));
   const weaponIds = new Set(actions.map((a) => a.weaponId).filter((id): id is string => Boolean(id)));
   const weapons = scenario.weapons.filter((w) => weaponIds.has(w.id));
+  const featureIds = new Set(combatant.featureIds ?? []);
+  const features = (scenario.features ?? []).filter((f) => featureIds.has(f.id));
   const template: CombatantTemplate = {
     id: genId('ctmpl'),
     name: (name ?? combatant.name).trim() || combatant.name,
@@ -304,6 +308,7 @@ export function saveCombatantTemplate(scenario: Scenario, combatant: Combatant, 
     combatant: deepClone(combatant),
     actions: deepClone(actions),
     weapons: deepClone(weapons),
+    features: deepClone(features),
   };
   return persistCombatantTemplates([...loadCombatantTemplates(), template]);
 }
@@ -319,10 +324,14 @@ export function deleteCombatantTemplate(id: string): CombatantTemplate[] {
 export function mergeTemplateLibrary(scenario: Scenario, template: CombatantTemplate): Scenario {
   const haveActions = new Set(scenario.actions.map((a) => a.id));
   const haveWeapons = new Set(scenario.weapons.map((w) => w.id));
+  const haveFeatures = new Set((scenario.features ?? []).map((f) => f.id));
+  // Older saved templates predate the `features` field; default it so they still load.
+  const templateFeatures = template.features ?? [];
   return {
     ...scenario,
     actions: [...scenario.actions, ...template.actions.filter((a) => !haveActions.has(a.id))],
     weapons: [...scenario.weapons, ...template.weapons.filter((w) => !haveWeapons.has(w.id))],
+    features: [...(scenario.features ?? []), ...templateFeatures.filter((f) => !haveFeatures.has(f.id))],
   };
 }
 
