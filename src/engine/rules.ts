@@ -9,7 +9,7 @@ import {
   type CombatState,
 } from './state';
 import { resolveTargets } from './targeting';
-import type { Action, ActionCost, Rule, RuleCondition } from './types';
+import type { Action, ActionCost, Rule, RuleCondition, TacticalDecision, TargetPolicy } from './types';
 
 export interface ChosenAction {
   rule: Rule;
@@ -129,4 +129,52 @@ export function chooseAction(
     return { rule, action, targets };
   }
   return undefined;
+}
+
+function selectorFromTargetPolicy(policy: TargetPolicy | undefined, fallback: Rule['target']): Rule['target'] {
+  if (!policy || policy.kind === 'ruleTarget') return fallback;
+  if (policy.kind === 'namedPriority') return { strategy: 'namedThenLowestHpEnemy', namedTargets: policy.namedTargets, fallback: policy.fallback ?? 'lowestHpEnemy' };
+  if (policy.kind === 'concentratingTarget') return { strategy: 'allEnemies' };
+  if (policy.kind === 'lowHpTarget') return { strategy: 'lowestHpEnemy' };
+  if (policy.kind === 'nearestMeleeThreat') return { strategy: 'nearestEnemy' };
+  return fallback;
+}
+
+function refineTargetsByPolicy(targets: CombatantState[], policy: TargetPolicy | undefined): CombatantState[] {
+  if (!policy) return targets;
+  if (policy.kind === 'concentratingTarget') return [...targets].sort((a, b) => Number(!!b.concentratingOn) - Number(!!a.concentratingOn));
+  if (policy.kind === 'lowAcTarget') return [...targets].sort((a, b) => a.base.ac - b.base.ac);
+  return targets;
+}
+
+export function chooseTacticalDecision(
+  state: CombatState,
+  actor: CombatantState,
+  cost: ActionCost = 'action',
+): TacticalDecision | undefined {
+  const policy = actor.base.tacticalPolicy;
+  const choice = chooseAction(state, actor, cost);
+  if (!choice) return undefined;
+  let action = choice.action;
+  if (policy?.baseActionSelector?.kind === 'actionId') {
+    const selected = policy.baseActionSelector.actionId ? state.actionsById[policy.baseActionSelector.actionId] : undefined;
+    if (selected && (selected.actionCost ?? 'action') === cost && actionAvailable(actor, selected)) action = selected;
+  }
+  const needed = targetCount(action);
+  let targets = choice.targets;
+  if (needed > 0) {
+    const selector = selectorFromTargetPolicy(policy?.targetPolicy, choice.rule.target);
+    targets = refineTargetsByPolicy(resolveTargets(state, actor, selector, Math.max(needed, state.combatants.length)), policy?.targetPolicy).slice(0, needed);
+    if (targets.length === 0) return undefined;
+  }
+  return {
+    rule: choice.rule,
+    movementPolicy: policy?.movementPolicy,
+    baseAction: action,
+    targets: targets.map((t) => t.base.id),
+    modifierPolicy: policy?.modifierPolicy,
+    targetPolicy: policy?.targetPolicy,
+    resourcePolicy: policy?.resourcePolicy,
+    extraActionPolicy: policy?.extraActionPolicy,
+  };
 }

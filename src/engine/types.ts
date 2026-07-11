@@ -456,6 +456,64 @@ export interface Rule {
  * the scenario's rule library and referenced from the Rules Library UI to
  * quickly seed common tactical patterns (e.g. "heal a hurt ally").
  */
+
+export type MovementPolicyKind = 'maintainRange' | 'close' | 'retreatKite' | 'holdPosition';
+export type BaseActionSelectorKind = 'rulePriority' | 'actionId' | 'kind';
+export type ModifierPolicyKind = 'always' | 'never' | 'minimumHitChance' | 'positiveExpectedValue';
+export type TargetPolicyKind = 'ruleTarget' | 'namedPriority' | 'concentratingTarget' | 'lowAcTarget' | 'lowHpTarget' | 'nearestMeleeThreat';
+export type ResourcePolicyKind = 'conserve' | 'spendEarly' | 'spendIfChangesOutcome' | 'highValueTargets';
+
+export interface MovementPolicy {
+  kind: MovementPolicyKind;
+  preferredRange?: number;
+  threatRange?: number;
+}
+
+export interface BaseActionSelector {
+  kind: BaseActionSelectorKind;
+  actionId?: string;
+  actionKind?: ActionKind;
+}
+
+export interface ModifierPolicy {
+  kind: ModifierPolicyKind;
+  featureIds?: string[];
+  minimumHitChance?: number;
+  damageDelta?: number;
+  toHitDelta?: number;
+}
+
+export interface TargetPolicy {
+  kind: TargetPolicyKind;
+  namedTargets?: string[];
+  fallback?: TargetStrategy;
+}
+
+export interface ResourcePolicy {
+  kind: ResourcePolicyKind;
+  featureIds?: string[];
+}
+
+export interface TacticalPolicy {
+  movementPolicy?: MovementPolicy;
+  baseActionSelector?: BaseActionSelector;
+  modifierPolicy?: ModifierPolicy;
+  targetPolicy?: TargetPolicy;
+  resourcePolicy?: ResourcePolicy;
+  extraActionPolicy?: ResourcePolicy;
+}
+
+export interface TacticalDecision {
+  rule?: Rule;
+  movementPolicy?: MovementPolicy;
+  baseAction: Action;
+  targets: string[];
+  modifierPolicy?: ModifierPolicy;
+  targetPolicy?: TargetPolicy;
+  resourcePolicy?: ResourcePolicy;
+  extraActionPolicy?: ResourcePolicy;
+}
+
 export interface RuleTemplate {
   id: string;
   name: string;
@@ -507,6 +565,8 @@ export interface Combatant {
   features?: Feature[];
   /** ordered priority script. */
   script: Rule[];
+  /** optional richer policy evaluated after the legacy priority rule path selects a legal base action. */
+  tacticalPolicy?: TacticalPolicy;
   /** spell slots by level. */
   spellSlots: SpellSlots;
   /** default target priority used by actions whose selector is 'namedThenLowestHpEnemy' without its own list. */
