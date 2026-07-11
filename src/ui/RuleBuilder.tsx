@@ -3,6 +3,7 @@ import type {
   Combatant,
   ConditionKind,
   Rule,
+  RuleCondition,
   RuleConditionType,
   RuleTemplate,
   Scenario,
@@ -40,6 +41,20 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
   const setRule = (idx: number, patch: Partial<Rule>) => {
     const next = rules.map((r, i) => (i === idx ? { ...r, ...patch } : r));
     onChange(renumber(next));
+  };
+
+  const addExtra = (idx: number) => {
+    const c = rules[idx].condition;
+    setRule(idx, { condition: { ...c, extra: [...(c.extra ?? []), { type: 'always' }], combine: c.combine ?? 'and' } });
+  };
+  const updateExtra = (idx: number, exIdx: number, leaf: RuleCondition) => {
+    const c = rules[idx].condition;
+    setRule(idx, { condition: { ...c, extra: (c.extra ?? []).map((e, i) => (i === exIdx ? leaf : e)) } });
+  };
+  const removeExtra = (idx: number, exIdx: number) => {
+    const c = rules[idx].condition;
+    const extra = (c.extra ?? []).filter((_, i) => i !== exIdx);
+    setRule(idx, { condition: { ...c, extra: extra.length ? extra : undefined } });
   };
 
   const addRule = () => {
@@ -167,6 +182,43 @@ export function RuleBuilder({ combatant, scenario, onChange }: Props) {
                 </label>
               )}
             </div>
+
+            {(rule.condition.extra ?? []).map((ex, exIdx) => {
+              const exMeta = CONDITION_TYPES.find((c) => c.value === ex.type)!;
+              return (
+                <div className="row" style={{ marginTop: '0.3rem' }} key={exIdx}>
+                  <label>
+                    <select
+                      value={rule.condition.combine ?? 'and'}
+                      onChange={(e) => setRule(idx, { condition: { ...rule.condition, combine: e.target.value as 'and' | 'or' } })}
+                      aria-label="Combine with primary condition"
+                    >
+                      <option value="and">AND</option>
+                      <option value="or">OR</option>
+                    </select>
+                  </label>
+                  <label>
+                    <select value={ex.type} onChange={(e) => updateExtra(idx, exIdx, defaultCondition(e.target.value as RuleConditionType))}>
+                      {CONDITION_TYPES.map((c) => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {exMeta.needs === 'value' && (
+                    <NumberInput className="num" min={0} value={ex.value ?? 0} onChange={(n) => updateExtra(idx, exIdx, { ...ex, value: n })} />
+                  )}
+                  {exMeta.needs === 'condition' && (
+                    <select value={ex.condition ?? 'asleep'} onChange={(e) => updateExtra(idx, exIdx, { ...ex, condition: e.target.value as ConditionKind })}>
+                      {CONDITION_KINDS.map((k) => (
+                        <option key={k} value={k}>{k}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button className="danger mini" onClick={() => removeExtra(idx, exIdx)} aria-label="Remove condition" title="Remove condition">✕</button>
+                </div>
+              );
+            })}
+            <button className="secondary mini" style={{ marginTop: '0.3rem' }} onClick={() => addExtra(idx)}>+ AND / OR condition</button>
 
             <div className="row" style={{ marginTop: '0.4rem' }}>
               <label>

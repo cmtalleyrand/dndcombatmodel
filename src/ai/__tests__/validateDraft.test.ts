@@ -56,6 +56,26 @@ describe('validateDraft enum + formula validation', () => {
     expect(errors.some((e) => e.includes('invalid condition type'))).toBe(true);
   });
 
+  it('validates compound-condition extras and combine', () => {
+    const draft = baseDraft();
+    draft.priorityScripts[0].condition = {
+      type: 'always',
+      combine: 'or',
+      // @ts-expect-error deliberately invalid extra enum
+      extra: [{ type: 'nope' }],
+    };
+    const errors = validateDraft(draft);
+    expect(errors.some((e) => e.includes('invalid condition type: nope'))).toBe(true);
+  });
+
+  it('accepts a well-formed compound condition', () => {
+    const draft = baseDraft();
+    draft.priorityScripts[0].condition = {
+      type: 'selfHpBelowPct', value: 50, combine: 'and', extra: [{ type: 'anyEnemyConcentrating' }],
+    };
+    expect(validateDraft(draft)).toEqual([]);
+  });
+
   it('rejects a hallucinated target strategy', () => {
     const draft = baseDraft();
     // @ts-expect-error deliberately invalid enum

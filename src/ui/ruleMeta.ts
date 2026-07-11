@@ -59,13 +59,21 @@ export function defaultCondition(type: RuleConditionType): RuleCondition {
   }
 }
 
-/** Short human-readable summary of a rule's condition, e.g. "if self HP < 25%". */
-export function describeCondition(condition: RuleCondition): string {
+/** Short human-readable summary of a single leaf predicate. */
+function describeLeaf(condition: RuleCondition): string {
   const meta = CONDITION_TYPES.find((c) => c.value === condition.type);
   if (!meta) return condition.type;
   if (meta.needs === 'value') return `${meta.label} ${condition.value ?? 0}`;
   if (meta.needs === 'condition') return `${meta.label}: ${condition.condition ?? '—'}`;
   return meta.label;
+}
+
+/** Short human-readable summary of a rule's condition, including any AND/OR extras. */
+export function describeCondition(condition: RuleCondition): string {
+  const base = describeLeaf(condition);
+  if (!condition.extra || condition.extra.length === 0) return base;
+  const joiner = condition.combine === 'or' ? ' OR ' : ' AND ';
+  return [base, ...condition.extra.map(describeLeaf)].join(joiner);
 }
 
 /** Short human-readable summary of a target selector, e.g. "lowest-HP enemy". */

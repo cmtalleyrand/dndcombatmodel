@@ -147,11 +147,16 @@ export function validateDraft(draft: AIScenarioDraft): string[] {
   for (const rule of draft.priorityScripts) {
     if (!combatantNames.has(rule.actorName)) errors.push(`Script references unknown combatant: ${rule.actorName}`);
     if (!actionNames.has(rule.actionName)) errors.push(`Script references unknown action: ${rule.actionName}`);
-    if (!RULE_CONDITION_SET.has(rule.condition.type)) {
-      errors.push(`Script for ${rule.actorName} uses invalid condition type: ${rule.condition.type}`);
+    for (const leaf of [rule.condition, ...(rule.condition.extra ?? [])]) {
+      if (!RULE_CONDITION_SET.has(leaf.type)) {
+        errors.push(`Script for ${rule.actorName} uses invalid condition type: ${leaf.type}`);
+      }
+      if (leaf.condition && !CONDITION_SET.has(leaf.condition)) {
+        errors.push(`Script for ${rule.actorName} references unknown condition: ${leaf.condition}`);
+      }
     }
-    if (rule.condition.condition && !CONDITION_SET.has(rule.condition.condition)) {
-      errors.push(`Script for ${rule.actorName} references unknown condition: ${rule.condition.condition}`);
+    if (rule.condition.combine && rule.condition.combine !== 'and' && rule.condition.combine !== 'or') {
+      errors.push(`Script for ${rule.actorName} uses invalid combine: ${rule.condition.combine}`);
     }
     if (!TARGET_STRATEGY_SET.has(rule.target.strategy)) {
       errors.push(`Script for ${rule.actorName} uses invalid target strategy: ${rule.target.strategy}`);
