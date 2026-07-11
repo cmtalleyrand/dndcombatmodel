@@ -58,6 +58,8 @@ export function validateScenarioReadiness(scenario: Scenario): ScenarioReadiness
   const actionIds = new Set(scenario.actions.map((a) => a.id));
   const combatantIds = new Set(scenario.combatants.map((c) => c.id));
   const targetListIds = new Set(scenario.targetLists.map((t) => t.id));
+  const featureIds = new Set((scenario.features ?? []).map((f) => f.id));
+  const referencedFeatureIds = new Set<string>();
 
   if (!scenario.combatants.some((c) => c.side === 'pc')) {
     errors.push({ code: 'missing-pc-side', message: 'Add at least one PC combatant.' });
@@ -99,6 +101,16 @@ export function validateScenarioReadiness(scenario: Scenario): ScenarioReadiness
       }
     }
 
+    for (const featureId of combatant.featureIds ?? []) {
+      referencedFeatureIds.add(featureId);
+      if (!featureIds.has(featureId)) {
+        errors.push({
+          code: 'missing-combatant-feature',
+          message: `${combatant.name} references missing feature "${featureId}".`,
+        });
+      }
+    }
+
     for (const rule of combatant.script) {
       checkRule(rule, `${combatant.name}'s script rule ${rule.priority}`, actionIds, combatantIds, targetListIds, errors);
     }
@@ -124,6 +136,15 @@ export function validateScenarioReadiness(scenario: Scenario): ScenarioReadiness
       targetListIds,
       errors,
     );
+  }
+
+  for (const feature of scenario.features ?? []) {
+    if (!referencedFeatureIds.has(feature.id) && !scenario.combatants.some((combatant) => (combatant.features ?? []).some((inline) => inline.id === feature.id))) {
+      warnings.push({
+        code: 'orphaned-feature',
+        message: `Feature "${feature.name}" is not referenced by any combatant.`,
+      });
+    }
   }
 
   if (scenario.initiativeMode === 'fixed') {

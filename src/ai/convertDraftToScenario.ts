@@ -1,4 +1,4 @@
-import type { Action, Combatant, Feature, Scenario, TargetList } from '../engine/types';
+import type { Action, Combatant, Feature, FeatureTiming, Scenario, TargetList } from '../engine/types';
 import type { AIDraftCombatant, AIScenarioDraft } from './types';
 import { validateDraft } from './validateDraft';
 
@@ -20,6 +20,10 @@ function uniqueId(prefix: string, value: string, used: Set<string>): string {
 
 function resourceId(name: string): string {
   return slug(name);
+}
+
+function triggeredEffectTiming(timing: 'precombat' | 'startOfCombat' | 'startOfTurn' | 'onHit' | 'actionEconomy'): FeatureTiming {
+  return timing === 'startOfCombat' ? 'precombat' : timing;
 }
 
 export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
@@ -52,10 +56,10 @@ export function convertDraftToScenario(draft: AIScenarioDraft): Scenario {
       extraDamage: modifier.extraDamageDice && modifier.extraDamageType ? [{ dice: modifier.extraDamageDice, type: modifier.extraDamageType, label: modifier.name }] : undefined,
       actionIds: actionIdsForFeature(modifier.appliesToActionNames),
     })),
-    ...(draft.triggeredEffects ?? []).filter((effect) => effect.timing === 'onHit' || effect.timing === 'actionEconomy').map((effect): Feature => ({
+    ...(draft.triggeredEffects ?? []).filter((effect) => effect.timing === 'onHit' || effect.timing === 'actionEconomy' || effect.timing === 'precombat' || effect.timing === 'startOfCombat' || effect.timing === 'startOfTurn').map((effect): Feature => ({
       id: uniqueId('feat', effect.name, usedFeatureIds),
       name: effect.name,
-      timing: effect.timing === 'actionEconomy' ? 'actionEconomy' : 'onHit',
+      timing: triggeredEffectTiming(effect.timing as 'precombat' | 'startOfCombat' | 'startOfTurn' | 'onHit' | 'actionEconomy'),
       resource: effect.resourceName ? { id: resourceId(effect.resourceName), max: draft.resources?.find((resource) => resource.name === effect.resourceName)?.max ?? 1 } : undefined,
       spend: effect.resourceName ? { resourceId: resourceId(effect.resourceName), amount: 1, trigger: effect.spendTrigger ?? (effect.timing === 'onHit' ? 'onHit' : 'always') } : undefined,
       extraDamage: effect.extraDamageDice && effect.extraDamageType ? [{ dice: effect.extraDamageDice, type: effect.extraDamageType, label: effect.name }] : undefined,

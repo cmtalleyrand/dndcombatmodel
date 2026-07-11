@@ -126,4 +126,45 @@ describe('composable attack features', () => {
     expect(fighterAttacks).toHaveLength(2);
     expect(fighterAttacks.every((e) => e.actionId === 'longbow-attack')).toBe(true);
   });
+  it('applies precombat and start-of-turn feature effects', () => {
+    const precombatBless: Feature = {
+      id: 'opening-bless',
+      name: 'Opening Bless',
+      timing: 'precombat',
+      applyConditions: [{ kind: 'blessed', duration: { type: 'permanent' } }],
+    };
+    const startOfTurnRage: Feature = {
+      id: 'battle-focus',
+      name: 'Battle Focus',
+      timing: 'startOfTurn',
+      applyConditions: [{ kind: 'raging', duration: { type: 'permanent' } }],
+    };
+    const wait = fixtureAction({ id: 'wait', name: 'Wait', kind: 'ability', targets: 0, damage: undefined });
+    const pc = scriptedCombatant('fighter', 'pc', wait.id, { features: [precombatBless, startOfTurnRage], maxHp: 100 });
+    const monster = scriptedCombatant('target', 'monster', wait.id, { maxHp: 100 });
+    const scenario = fixtureScenario({ combatants: [pc, monster], actions: [wait], fixedOrder: ['fighter', 'target'], maxRounds: 1 });
+
+    const result = runSimulation(scenario, 1, true);
+
+    expect(result.frames[0].events.some((event) => event.message.includes('fighter is now Blessed'))).toBe(true);
+    expect(result.events.some((event) => event.message.includes('fighter is now Raging'))).toBe(true);
+  });
+
+  it('gates feature damage with the rider trigger vocabulary', () => {
+    const markedShot: Feature = {
+      id: 'marked-shot',
+      name: 'Marked Shot',
+      timing: 'onHit',
+      condition: { trigger: 'targetHasCondition', condition: 'marked' },
+      extraDamage: [{ flat: 5, type: 'force', label: 'mark' }],
+    };
+    const state = fixtureState([archer([markedShot]), ogre(12)], [longbowAttack], { weapons: [longbow] });
+    state.combatants[1].conditions.push({ kind: 'marked', duration: { type: 'permanent' } });
+    const events: LogEvent[] = [];
+
+    performAction(state, new RNG(58), state.combatants[0], longbowAttack, [state.combatants[1]], events);
+
+    expect(events.some((event) => event.message.includes('Marked Shot: +5 force damage'))).toBe(true);
+  });
+
 });

@@ -177,6 +177,14 @@ export type RiderTrigger =
   | 'selfHasCondition'; // the attacker has `condition` (Rage)
 
 /** Conditional extra damage on a hit (Sneak Attack, Rage, Hunter's Mark, etc.). */
+export interface FeatureTrigger {
+  trigger: RiderTrigger;
+  /** condition parameter for target/self-has-condition triggers. */
+  condition?: ConditionKind;
+  /** only applies to melee (same-block) attacks (Rage). */
+  meleeOnly?: boolean;
+}
+
 export interface DamageRider {
   /** human label shown in the log, e.g. "Sneak Attack". */
   label?: string;
@@ -204,7 +212,6 @@ export type FeatureTiming =
   | 'beforeAttackRoll'
   | 'afterAttackRollBeforeHitResolution'
   | 'onHit'
-  | 'afterHit'
   | 'actionEconomy';
 
 export interface ResourcePoolDefinition {
@@ -239,6 +246,8 @@ export interface Feature {
   timing: FeatureTiming;
   resource?: ResourcePoolDefinition;
   spend?: FeatureResourceSpend;
+  /** Optional combat-state predicate that must be true before this feature applies. */
+  condition?: FeatureTrigger;
   attackModifier?: AttackModifierEffect;
   extraDamage?: ExtraDamage[];
   applyConditions?: ConditionApplication[];

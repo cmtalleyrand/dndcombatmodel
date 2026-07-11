@@ -397,9 +397,42 @@ function legacyActionFeatures(action: Action): Feature[] {
   return features;
 }
 
-function applicableFeatures(state: CombatState, actor: CombatantState, action: Action, timing: Feature['timing']): Feature[] {
+function featureConditionApplies(
+  state: CombatState,
+  actor: CombatantState,
+  feature: Feature,
+  target?: CombatantState,
+  adv: Advantage = 'normal',
+  gap = 0,
+): boolean {
+  const condition = feature.condition;
+  if (!condition) return true;
+  if (condition.meleeOnly && gap > 0) return false;
+  switch (condition.trigger) {
+    case 'always':
+      return true;
+    case 'hasAdvantage':
+      return adv === 'advantage';
+    case 'advantageOrAllyAdjacent':
+      return adv === 'advantage' || (!!target && allyAdjacentToTarget(state, actor, target));
+    case 'targetHasCondition':
+      return !!target && !!condition.condition && target.conditions.some((c) => c.kind === condition.condition);
+    case 'selfHasCondition':
+      return !!condition.condition && actor.conditions.some((c) => c.kind === condition.condition);
+  }
+}
+
+function applicableFeatures(
+  state: CombatState,
+  actor: CombatantState,
+  action: Action,
+  timing: Feature['timing'],
+  target?: CombatantState,
+  adv: Advantage = 'normal',
+  gap = 0,
+): Feature[] {
   return [...combatantFeatures(state, actor), ...legacyActionFeatures(action)].filter(
-    (f) => f.timing === timing && (!f.actionIds || f.actionIds.includes(action.id)),
+    (f) => f.timing === timing && (!f.actionIds || f.actionIds.includes(action.id)) && featureConditionApplies(state, actor, f, target, adv, gap),
   );
 }
 
@@ -580,7 +613,7 @@ function resolveAttack(
         rangeAdv,
       );
       let toHit = profile.toHit;
-      const preRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll').filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, target.base.ac, adv, bless));
+      const preRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll', target, adv, gap).filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, target.base.ac, adv, bless));
       for (const feature of preRollFeatures) {
         toHit += feature.attackModifier?.toHit ?? 0;
         if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
@@ -594,7 +627,7 @@ function resolveAttack(
       }
       const roll = rollD20(rng, toHit, adv);
       let rollTotal = roll.total;
-      const postRollFeatures = applicableFeatures(state, actor, action, 'afterAttackRollBeforeHitResolution');
+      const postRollFeatures = applicableFeatures(state, actor, action, 'afterAttackRollBeforeHitResolution', target, adv, gap);
       for (const feature of postRollFeatures) {
         if (!canSpendFeature(actor, feature) || roll.isCritMiss || roll.isCrit || rollTotal >= target.base.ac) continue;
         const maximum = feature.spend?.missThreshold ?? feature.attackModifier?.toHit ?? 0;
@@ -636,7 +669,7 @@ function resolveAttack(
       // weapon dice above — not just on a natural 20.
       const riderBonus = applyRiders(state, rng, actor, target, action, adv, gap, isCritHit, events);
       dmg += riderBonus;
-      const onHitFeatures = applicableFeatures(state, actor, action, 'onHit').filter((f) => canSpendFeature(actor, f));
+      const onHitFeatures = applicableFeatures(state, actor, action, 'onHit', target, adv, gap).filter((f) => canSpendFeature(actor, f));
       for (const feature of onHitFeatures) {
         if (feature.spend?.trigger === 'onHit' || feature.spend?.trigger === 'always') spendFeature(actor, feature);
       }
@@ -868,6 +901,39 @@ function resolveSpellOrAbility(
           action.damage ? ` for ${dmg} damage (now ${target.hp} HP)` : ''
         }.`,
       });
+    }
+  }
+}
+
+
+export function applyTimedFeatures(
+  state: CombatState,
+  rng: RNG,
+  actor: CombatantState,
+  timing: 'precombat' | 'startOfTurn',
+  events: LogEvent[],
+): void {
+  const action: Action = { id: '', name: timing, kind: 'ability', targets: 0 };
+  for (const feature of applicableFeatures(state, actor, action, timing)) {
+    if (!canSpendFeature(actor, feature)) continue;
+    if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
+    if (feature.applyConditions?.length) applyConditionsTo(actor, actor, feature.applyConditions, state, events);
+    if (feature.extraDamage?.length) {
+      for (const extra of feature.extraDamage) {
+        let damage = extra.flat ?? 0;
+        if (extra.dice) damage += rollDice(rng, extra.dice).total;
+        applyDamage(state, rng, actor, actor, damage, events, extra.type);
+        events.push({
+          round: state.round,
+          actorId: actor.base.id,
+          actorName: actor.base.name,
+          type: 'attack',
+          targetId: actor.base.id,
+          targetName: actor.base.name,
+          damage,
+          message: `  ↳ ${feature.name}: ${damage} ${extra.type} damage.`,
+        });
+      }
     }
   }
 }
