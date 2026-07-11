@@ -33,6 +33,54 @@ describe('default scenario', () => {
   });
 
 
+  it('uses feature-backed SRD rider examples, basic actions, and 2024 Inflict Wounds', () => {
+    const scenario = defaultScenario();
+    const actionsById = new Map(SRD_ACTIONS.map((action) => [action.id, action]));
+    const featuresById = new Map(SRD_FEATURES.map((feature) => [feature.id, feature]));
+
+    expect(actionsById.has('act-rogue-shortbow')).toBe(false);
+    expect(actionsById.has('act-greataxe-rage')).toBe(false);
+    expect(actionsById.has('act-longbow-hunters-mark')).toBe(false);
+
+    for (const [id, kind] of [
+      ['act-dash', 'dash'],
+      ['act-disengage', 'disengage'],
+      ['act-help', 'help'],
+      ['act-hide', 'hide'],
+      ['act-ready', 'ready'],
+      ['act-search', 'search'],
+    ] as const) {
+      expect(actionsById.get(id)).toMatchObject({ kind });
+    }
+
+    expect(featuresById.get('feat-sneak-attack')).toMatchObject({
+      timing: 'onHit',
+      condition: { trigger: 'advantageOrAllyAdjacent' },
+      actionIds: ['act-shortbow'],
+      oncePerTurn: true,
+    });
+    expect(featuresById.get('feat-rage-damage')).toMatchObject({
+      timing: 'onHit',
+      condition: { trigger: 'selfHasCondition', condition: 'raging', meleeOnly: true },
+      actionIds: ['act-greataxe'],
+    });
+    expect(featuresById.get('feat-hunters-mark')).toMatchObject({
+      timing: 'onHit',
+      condition: { trigger: 'targetHasCondition', condition: 'marked' },
+      actionIds: ['act-longbow'],
+    });
+
+    expect(scenario.combatants.find((combatant) => combatant.id === 'pc-rogue')?.featureIds).toContain('feat-sneak-attack');
+    expect(scenario.combatants.find((combatant) => combatant.id === 'pc-barbarian')?.featureIds).toContain('feat-rage-damage');
+    expect(scenario.combatants.find((combatant) => combatant.id === 'pc-ranger')?.featureIds).toContain('feat-hunters-mark');
+
+    expect(actionsById.get('act-inflict-wounds')).toMatchObject({
+      damage: '2d10',
+      save: { ability: 'con', onSuccess: 'none' },
+    });
+    expect(actionsById.get('act-inflict-wounds')?.spellAttack).toBeUndefined();
+  });
+
   it('weapon library exposes mastery traits and reusable weapon attack actions', () => {
     expect(SRD_WEAPONS.length).toBeGreaterThanOrEqual(39);
     expect(SRD_ACTIONS.filter((a) => a.kind === 'attack' && a.weaponId).length).toBeGreaterThanOrEqual(40);

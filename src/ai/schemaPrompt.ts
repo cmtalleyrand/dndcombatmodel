@@ -48,7 +48,7 @@ interface AIDraftCombatant {
 interface Action {
   id: ''; // leave empty; the app assigns ids
   name: string; // unique
-  kind: 'attack' | 'spell' | 'ability' | 'dodge' | 'move';
+  kind: 'attack' | 'spell' | 'ability' | 'dodge' | 'move' | 'dash' | 'disengage' | 'help' | 'hide' | 'ready' | 'search';
   targets: number; // number of distinct targets this hits, usually 1
   attackBonus?: number; // to-hit bonus for an attack roll
   attackCount?: number; // number of separate attack rolls this action makes (e.g. 2 for Extra Attack)

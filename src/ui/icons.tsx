@@ -204,6 +204,12 @@ const ACTION_ICONS: Record<ActionKind, (p: IconProps) => JSX.Element> = {
   ability: BoltIcon,
   dodge: ShieldIcon,
   move: FootstepsIcon,
+  dash: FootstepsIcon,
+  disengage: FootstepsIcon,
+  help: BoltIcon,
+  hide: ShieldIcon,
+  ready: BoltIcon,
+  search: BoltIcon,
 };
 
 const ACTION_COLOR_VAR: Record<ActionKind, string> = {
@@ -212,6 +218,12 @@ const ACTION_COLOR_VAR: Record<ActionKind, string> = {
   ability: 'var(--utility-soft)',
   dodge: 'var(--pc-soft)',
   move: 'var(--muted)',
+  dash: 'var(--muted)',
+  disengage: 'var(--muted)',
+  help: 'var(--utility-soft)',
+  hide: 'var(--pc-soft)',
+  ready: 'var(--utility-soft)',
+  search: 'var(--utility-soft)',
 };
 
 /** Derive a decorative icon + accent color for an action kind. */

@@ -99,7 +99,7 @@ export const DAMAGE_TYPES: DamageType[] = [
   'thunder',
 ];
 
-export type ActionKind = 'attack' | 'spell' | 'ability' | 'dodge' | 'move';
+export type ActionKind = 'attack' | 'spell' | 'ability' | 'dodge' | 'move' | 'dash' | 'disengage' | 'help' | 'hide' | 'ready' | 'search';
 
 /** How targets are resolved for a save-based effect. */
 export interface SaveSpec {

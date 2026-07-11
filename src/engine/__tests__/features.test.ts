@@ -209,6 +209,25 @@ describe('composable attack features', () => {
     expect(marked.combatants[1].hp).toBeLessThan(unmarked.combatants[1].hp);
   });
 
+
+  it("applies migrated SRD Sneak Attack, Rage, and Hunter's Mark through features", () => {
+    const rogueShot = SRD_ACTIONS.find((action) => action.id === 'act-shortbow')!;
+    const rageAttack = SRD_ACTIONS.find((action) => action.id === 'act-greataxe')!;
+    const markShot = SRD_ACTIONS.find((action) => action.id === 'act-longbow')!;
+    const state = fixtureState(
+      [
+        fixtureCombatant('rogue', 'pc', { actionIds: [rogueShot.id], featureIds: ['feat-sneak-attack'], position: 0, abilityScores: { str: 10, dex: 20, con: 10, int: 10, wis: 10, cha: 10 } }),
+        fixtureCombatant('barbarian', 'pc', { actionIds: [rageAttack.id], featureIds: ['feat-rage-damage'], position: 0, abilityScores: { str: 20, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } }),
+        fixtureCombatant('ranger', 'pc', { actionIds: [markShot.id], featureIds: ['feat-hunters-mark'], position: 0, abilityScores: { str: 10, dex: 20, con: 10, int: 10, wis: 10, cha: 10 } }),
+        fixtureCombatant('target', 'monster', { maxHp: 200, ac: 1, position: 0 }),
+        fixtureCombatant('ally', 'pc', { position: 0 }),
+      ],
+      [rogueShot, rageAttack, markShot],
+      { weapons: [longbow, fixtureWeapon({ id: 'wpn-shortbow', name: 'Shortbow', damage: '1d6', damageType: 'piercing', properties: ['ranged'], range: 80 }), fixtureWeapon({ id: 'wpn-greataxe', name: 'Greataxe', damage: '1d12', damageType: 'slashing', properties: ['heavy', 'twoHanded'], range: 5 })], features: SRD_FEATURES },
+    );
+    state.combatants[1].conditions.push({ kind: 'raging', duration: { type: 'permanent' } });
+    state.combatants[3].conditions.push({ kind: 'marked', duration: { type: 'permanent' } });
+    const events: LogEvent[] = [];
   it("wires real SRD-authored features (Sneak Attack, Rage, Hunter's Mark) through the generic feature system", () => {
     const rogueShot = SRD_ACTIONS.find((action) => action.id === 'act-rogue-shortbow')!;
     const rageAttack = SRD_ACTIONS.find((action) => action.id === 'act-greataxe-rage')!;

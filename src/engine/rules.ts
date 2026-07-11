@@ -110,7 +110,7 @@ export function actionAvailable(actor: CombatantState, action: Action): boolean 
 
 /** Number of targets an action wants. */
 function targetCount(action: Action): number {
-  if (action.kind === 'dodge' || action.kind === 'move') return 0;
+  if (['dodge', 'move', 'dash', 'disengage', 'hide', 'ready', 'search'].includes(action.kind)) return 0;
   // `targets` is the number of distinct targets; each is attacked `attackCount` times
   // (so 2 targets with attackCount 2 = 4 attack rolls total).
   return Math.max(1, action.targets);
