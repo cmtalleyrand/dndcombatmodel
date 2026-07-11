@@ -8,6 +8,8 @@ import type {
   DamageRider,
   DamageType,
   DurationKind,
+  Feature,
+  FeatureCategory,
   RuleTemplate,
   Scenario,
   TargetList,
@@ -16,18 +18,22 @@ import type {
   WeaponMastery,
   WeaponProperty,
 } from '../engine/types';
+import { FEATURE_CATEGORIES, FEATURE_CATEGORY_LABELS } from '../engine/types';
 import {
   duplicateAction,
   duplicateConditionPreset,
+  duplicateFeature,
   duplicateRuleTemplate,
   genId,
   removeAction,
   removeConditionPreset,
+  removeFeature,
   removeRuleTemplate,
   removeTargetList,
   removeWeapon,
   upsertAction,
   upsertConditionPreset,
+  upsertFeature,
   upsertRuleTemplate,
   upsertTargetList,
   upsertWeapon,
@@ -35,7 +41,8 @@ import {
 import { CONDITION_CATALOG, CONDITION_KINDS } from '../engine/conditions';
 import { LEVEL_1_CLASS_PCS, LEVEL_3_CLASS_PCS, SAMPLE_MONSTERS } from '../data/srd';
 import { CONDITION_TYPES, defaultCondition, describeCondition, describeTarget, FALLBACK_STRATEGIES, TARGET_STRATEGIES } from './ruleMeta';
-import { describeActionGeneric } from './describe';
+import { describeActionGeneric, describeFeature } from './describe';
+import { NumberInput } from './NumberInput';
 import { useDialogs } from './Dialogs';
 import { InfoHint } from './InfoHint';
 import { ScrollIcon, TrashIcon, pickActionIcon, pickWeaponIcon } from './icons';
@@ -82,6 +89,7 @@ export function ActionLibraryTab({ scenario, setScenario }: Props) {
   return (
     <div>
       <StoredCombatantsSection scenario={scenario} />
+      <FeaturesLibrarySection scenario={scenario} setScenario={setScenario} />
       <WeaponsSection scenario={scenario} setScenario={setScenario} />
       <TargetListsSection scenario={scenario} setScenario={setScenario} />
       <ConditionsLibrarySection scenario={scenario} setScenario={setScenario} />
@@ -612,6 +620,192 @@ function ConditionEditor({
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Features library (grouped by classification)
+// ---------------------------------------------------------------------------
+
+const FEATURE_TIMINGS: { value: Feature['timing']; label: string }[] = [
+  { value: 'onHit', label: 'On hit' },
+  { value: 'beforeAttackRoll', label: 'Before attack roll' },
+  { value: 'afterAttackRollBeforeHitResolution', label: 'After a near-miss' },
+  { value: 'startOfTurn', label: 'Start of turn' },
+  { value: 'precombat', label: 'Before combat' },
+  { value: 'actionEconomy', label: 'Action economy' },
+];
+
+const FEATURE_TRIGGERS: { value: NonNullable<Feature['condition']>['trigger']; label: string }[] = [
+  { value: 'always', label: 'Always' },
+  { value: 'hasAdvantage', label: 'When attack has advantage' },
+  { value: 'advantageOrAllyAdjacent', label: 'Advantage or ally adjacent' },
+  { value: 'targetHasCondition', label: 'Target has condition…' },
+  { value: 'selfHasCondition', label: 'Self has condition…' },
+];
+
+function FeaturesLibrarySection({ scenario, setScenario }: Props) {
+  const { confirm } = useDialogs();
+  const [open, setOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const features = scenario.features ?? [];
+
+  const usedBy = (id: string) => scenario.combatants.filter((c) => c.featureIds?.includes(id));
+
+  const add = (category: FeatureCategory) => {
+    const f: Feature = { id: genId('feat'), name: 'New feature', category, timing: 'onHit' };
+    setScenario(upsertFeature(scenario, f));
+    setEditId(f.id);
+    setOpen(true);
+  };
+
+  // group by category, in the canonical order, with an "Uncategorized" bucket last
+  const grouped = FEATURE_CATEGORIES.map((cat) => ({
+    cat,
+    label: FEATURE_CATEGORY_LABELS[cat],
+    items: features.filter((f) => f.category === cat),
+  })).filter((g) => g.items.length > 0);
+  const uncategorized = features.filter((f) => !f.category);
+
+  return (
+    <div className="panel">
+      <div className="row spread">
+        <h2>
+          Features ({features.length})
+          <InfoHint>
+            Class features, feats, species traits, monster abilities, and spell effects — the
+            mechanical extras attached to combatants. Assign them to a combatant on the PCs /
+            Monsters tabs. Grouped here by where they come from.
+          </InfoHint>
+        </h2>
+        <button className="secondary" onClick={() => setOpen(!open)}>{open ? 'Hide' : 'Show'}</button>
+      </div>
+
+      {open && (
+        <>
+          <div className="toolbar" style={{ marginBottom: '0.5rem' }}>
+            <select defaultValue="" onChange={(e) => { if (e.target.value) { add(e.target.value as FeatureCategory); e.currentTarget.value = ''; } }} aria-label="Add a feature of category">
+              <option value="">+ Add feature…</option>
+              {FEATURE_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>{FEATURE_CATEGORY_LABELS[cat]}</option>
+              ))}
+            </select>
+          </div>
+
+          {features.length === 0 && <p className="muted">(library empty)</p>}
+
+          {[...grouped, ...(uncategorized.length ? [{ cat: 'uncategorized' as const, label: 'Uncategorized', items: uncategorized }] : [])].map((group) => (
+            <div key={group.label} style={{ marginBottom: '0.75rem' }}>
+              <h3 className="roster-title" style={{ marginBottom: '0.35rem' }}>{group.label} ({group.items.length})</h3>
+              {group.items.map((f) => {
+                const used = usedBy(f.id);
+                return (
+                  <div className="rule" key={f.id}>
+                    <div className="row spread">
+                      <div>
+                        <strong>{f.name}</strong>
+                        <div className="muted" style={{ fontSize: '0.8rem' }}>{describeFeature(f)}</div>
+                        {used.length > 0 && <div className="muted" style={{ fontSize: '0.72rem' }}>on: {used.map((c) => c.name).join(', ')}</div>}
+                      </div>
+                      <div className="row">
+                        <button className="secondary mini" onClick={() => setEditId(editId === f.id ? null : f.id)}>{editId === f.id ? 'Close' : 'Edit'}</button>
+                        <button className="secondary mini" onClick={() => setScenario(duplicateFeature(scenario, f.id).scenario)}>⧉</button>
+                        <button
+                          className="danger mini"
+                          onClick={async () => {
+                            const warn = used.length
+                              ? `Delete "${f.name}"? It is attached to ${used.length} combatant(s); it will be removed from them.`
+                              : `Delete "${f.name}"?`;
+                            if (await confirm(warn, { title: 'Delete feature', confirmLabel: 'Delete', danger: true })) {
+                              setScenario(removeFeature(scenario, f.id));
+                            }
+                          }}
+                          aria-label="Delete feature"
+                        >
+                          <TrashIcon size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    {editId === f.id && <FeatureEditor feature={f} onChange={(next) => setScenario(upsertFeature(scenario, next))} />}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function FeatureEditor({ feature, onChange }: { feature: Feature; onChange: (f: Feature) => void }) {
+  const set = (patch: Partial<Feature>) => onChange({ ...feature, ...patch });
+  const extra = feature.extraDamage?.[0];
+  const setExtra = (patch: Partial<NonNullable<Feature['extraDamage']>[number]>) => {
+    const next: NonNullable<Feature['extraDamage']>[number] = {
+      dice: extra?.dice, flat: extra?.flat, type: extra?.type ?? 'piercing', label: feature.name, ...patch,
+    };
+    set({ extraDamage: !next.dice && !next.flat ? undefined : [next] });
+  };
+  const trigger = feature.condition?.trigger ?? 'always';
+
+  return (
+    <div className="modifiers" style={{ marginTop: '0.5rem' }}>
+      <div className="field-row">
+        <label>Name<input value={feature.name} onChange={(e) => set({ name: e.target.value })} /></label>
+        <label>Category
+          <select value={feature.category ?? ''} onChange={(e) => set({ category: (e.target.value || undefined) as FeatureCategory | undefined })}>
+            <option value="">— none —</option>
+            {FEATURE_CATEGORIES.map((c) => <option key={c} value={c}>{FEATURE_CATEGORY_LABELS[c]}</option>)}
+          </select>
+        </label>
+        <label>Timing
+          <select value={feature.timing} onChange={(e) => set({ timing: e.target.value as Feature['timing'] })}>
+            {FEATURE_TIMINGS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </label>
+        <label style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: '0.9rem' }}>
+          <input type="checkbox" checked={feature.oncePerTurn ?? false} onChange={(e) => set({ oncePerTurn: e.target.checked || undefined })} />
+          once per turn
+        </label>
+      </div>
+
+      <div className="field-row">
+        <label>Extra dmg dice<input placeholder="e.g. 2d6" value={extra?.dice ?? ''} onChange={(e) => setExtra({ dice: e.target.value || undefined })} /></label>
+        <label>+ flat<NumberInput className="num" value={extra?.flat ?? 0} onChange={(n) => setExtra({ flat: n || undefined })} /></label>
+        <label>type
+          <select value={extra?.type ?? 'piercing'} onChange={(e) => setExtra({ type: e.target.value as DamageType })}>
+            {DAMAGE_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </label>
+        <label>+ to hit<NumberInput className="num" value={feature.attackModifier?.toHit ?? 0} onChange={(n) => set({ attackModifier: (n || feature.attackModifier?.damage) ? { ...feature.attackModifier, toHit: n || undefined } : undefined })} /></label>
+        <label>extra actions<NumberInput className="num" value={feature.extraAction?.count ?? 0} onChange={(n) => set({ extraAction: n ? { count: n } : undefined })} /></label>
+      </div>
+
+      <div className="field-row">
+        <label>Applies when
+          <select value={trigger} onChange={(e) => {
+            const t = e.target.value as NonNullable<Feature['condition']>['trigger'];
+            set({ condition: t === 'always' ? undefined : { trigger: t, condition: feature.condition?.condition, meleeOnly: feature.condition?.meleeOnly } });
+          }}>
+            {FEATURE_TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </label>
+        {(trigger === 'targetHasCondition' || trigger === 'selfHasCondition') && (
+          <label>condition
+            <select value={feature.condition?.condition ?? 'marked'} onChange={(e) => set({ condition: { ...feature.condition!, condition: e.target.value as ConditionKind } })}>
+              {CONDITION_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </label>
+        )}
+        {trigger !== 'always' && (
+          <label style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: '0.9rem' }}>
+            <input type="checkbox" checked={feature.condition?.meleeOnly ?? false} onChange={(e) => set({ condition: { ...feature.condition!, trigger, meleeOnly: e.target.checked || undefined } })} />
+            melee only
+          </label>
+        )}
       </div>
     </div>
   );

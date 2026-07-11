@@ -4,6 +4,7 @@ import type {
   Action,
   Combatant,
   ConditionPreset,
+  Feature,
   Rule,
   RuleTemplate,
   Scenario,
@@ -12,7 +13,7 @@ import type {
   TargetList,
   Weapon,
 } from '../engine/types';
-import { DEFAULT_CONDITION_LIBRARY, DEFAULT_RULE_LIBRARY, defaultScenario } from '../data/srd';
+import { DEFAULT_CONDITION_LIBRARY, DEFAULT_RULE_LIBRARY, SRD_FEATURES, defaultScenario } from '../data/srd';
 import { SRD_WEAPONS } from '../data/weapons';
 
 const STORAGE_KEY = 'dnd-combat-sim:scenario:v1';
@@ -146,6 +147,33 @@ export function upsertWeapon(scenario: Scenario, w: Weapon): Scenario {
 
 export function removeWeapon(scenario: Scenario, id: string): Scenario {
   return { ...scenario, weapons: scenario.weapons.filter((w) => w.id !== id) };
+}
+
+// ---- features ----
+
+export function upsertFeature(scenario: Scenario, f: Feature): Scenario {
+  const features = scenario.features ?? [];
+  const idx = features.findIndex((x) => x.id === f.id);
+  const next = idx >= 0 ? features.map((x) => (x.id === f.id ? f : x)) : [...features, f];
+  return { ...scenario, features: next };
+}
+
+export function removeFeature(scenario: Scenario, id: string): Scenario {
+  return {
+    ...scenario,
+    features: (scenario.features ?? []).filter((f) => f.id !== id),
+    // also drop the reference from any combatant so nothing points at a missing feature
+    combatants: scenario.combatants.map((c) =>
+      c.featureIds?.includes(id) ? { ...c, featureIds: c.featureIds.filter((fid) => fid !== id) } : c,
+    ),
+  };
+}
+
+export function duplicateFeature(scenario: Scenario, id: string): { scenario: Scenario; newId: string } {
+  const src = (scenario.features ?? []).find((f) => f.id === id);
+  if (!src) return { scenario, newId: id };
+  const copy: Feature = { ...src, id: genId('feat'), name: `${src.name} (copy)` };
+  return { scenario: { ...scenario, features: [...(scenario.features ?? []), copy] }, newId: copy.id };
 }
 
 // ---- target lists ----
@@ -401,6 +429,7 @@ function normalizeScenario(parsed: Scenario): Scenario {
     throw new Error('Invalid scenario JSON: missing combatants or actions.');
   }
   if (!parsed.weapons) parsed.weapons = SRD_WEAPONS;
+  if (!parsed.features) parsed.features = SRD_FEATURES;
   if (!parsed.targetLists) parsed.targetLists = [];
   if (!parsed.ruleLibrary) parsed.ruleLibrary = DEFAULT_RULE_LIBRARY;
   if (!parsed.conditionLibrary) parsed.conditionLibrary = DEFAULT_CONDITION_LIBRARY;
