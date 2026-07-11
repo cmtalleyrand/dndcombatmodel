@@ -53,6 +53,74 @@ function downloadResultsCsv(stats: AggregateStats, scenario: Scenario): void {
   URL.revokeObjectURL(url);
 }
 
+function downloadResultsPng(stats: AggregateStats, scenario: Scenario): void {
+  const rows = stats.combatants;
+  const W = 760;
+  const H = 150 + rows.length * 26 + 30;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const PC = '#5b94d6', MON = '#c0524d', DRAW = '#8a8170', BG = '#1b1712', TEXT = '#ece3d2', MUTED = '#9a917f';
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = TEXT;
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText(scenario.name || 'Scenario', 20, 30);
+  ctx.fillStyle = MUTED;
+  ctx.font = '12px sans-serif';
+  ctx.fillText(`${stats.simulations.toLocaleString()} simulations · avg ${stats.avgRounds.toFixed(1)} rounds`, 20, 50);
+
+  // win-rate stacked bar
+  const barY = 66, barH = 26, barW = W - 40;
+  let x = 20;
+  for (const seg of [
+    { v: stats.pcWinRate, c: PC, label: 'Party' },
+    { v: stats.drawRate, c: DRAW, label: 'Draw' },
+    { v: stats.monsterWinRate, c: MON, label: 'Monsters' },
+  ]) {
+    const w = seg.v * barW;
+    ctx.fillStyle = seg.c;
+    ctx.fillRect(x, barY, w, barH);
+    if (seg.v >= 0.1) {
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(`${seg.label} ${(seg.v * 100).toFixed(0)}%`, x + 6, barY + 17);
+    }
+    x += w;
+  }
+
+  // per-combatant survival bars
+  let y = 128;
+  ctx.font = '12px sans-serif';
+  for (const c of rows) {
+    ctx.fillStyle = TEXT;
+    ctx.fillText(c.name, 20, y + 12);
+    const trackX = 200, trackW = W - 240;
+    ctx.fillStyle = '#2a241b';
+    ctx.fillRect(trackX, y, trackW, 14);
+    ctx.fillStyle = c.side === 'pc' ? PC : MON;
+    ctx.fillRect(trackX, y, trackW * c.survivalRate, 14);
+    ctx.fillStyle = MUTED;
+    ctx.fillText(`${(c.survivalRate * 100).toFixed(0)}% survive`, trackX + trackW + 6, y + 12);
+    y += 26;
+  }
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = (scenario.name || 'scenario').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    a.href = url;
+    a.download = `${safeName}-results.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+}
+
 export function Results({ stats, scenario, onOpenReplay }: Props) {
   const pcStats = stats.combatants.filter((c) => c.side === 'pc');
   const monsterStats = stats.combatants.filter((c) => c.side === 'monster');
@@ -70,6 +138,13 @@ export function Results({ stats, scenario, onOpenReplay }: Props) {
           title="Download aggregate results (win rates + per-combatant stats) as CSV"
         >
           Export CSV
+        </button>
+        <button
+          className="secondary"
+          onClick={() => downloadResultsPng(stats, scenario)}
+          title="Download the outcome + survival chart as a PNG image"
+        >
+          Export PNG
         </button>
       </div>
 
