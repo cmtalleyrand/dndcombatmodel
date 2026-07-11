@@ -125,14 +125,39 @@ interface AIDraftTargetPriority {
 
 Decomposition rules: never turn a feat, maneuver, species ability, or long-duration buff into a separate Action unless the ability is actually a distinct action chosen in play. A longbow attack with Sharpshooter is one base Action named like "Longbow", plus a stackableModifier named "Sharpshooter". Precision Attack is a post-roll stackableModifier with a resource, not "Precision Attack Longbow". Action Surge is an actionEconomy triggeredEffect/resource, not "Action Surge Attack". Every requested feature must appear in featureDecompositions and must be consumed by at least one passiveTraits, resources, stackableModifiers, triggeredEffects, tacticalPolicies, or assumptionsRequiringApproval entry. For each requested feature record the rule source/name, simulator representation, trigger/timing, resource cost, stacking behavior, and any known approximation or unsupported piece. Movement-affecting features must either change speed through passiveTraits or create a movement policy. Limited-use features must declare a resources entry with a positive max.
 
+Presentation: the user reviews this draft as PC and monster stat cards, not as JSON. Each card shows name, HP, AC, the full ability-score block with modifiers, save proficiencies, damage resistances/immunities, spell slots, every action with its derived to-hit/damage/save DC, features, and the full priority script. Fill every combatant out completely so the cards read like a real stat block: always set the six abilityScores, proficiencyBonus, and level; set saveProficiencies for classed PCs and monsters that have them; set position (in feet) for every combatant so the encounter distance the user asked for is visible; give each combatant at least one action and at least one priority-script rule so it does not merely Dodge.
+
 Rules: every actionName referenced by a combatant or rule must exist in "actions"; every combatant referenced by name must exist in "pcs" or "enemies"; combatant and action names must be unique; condition.type and target.strategy/fallback must be exactly one of the listed strings (do not invent new ones). Keep ability scores, AC, and HP within normal 5e ranges for the stated level/CR. If the request is ambiguous, make a reasonable assumption and record it in assumptionsRequiringApproval rather than asking a question — this draft is reviewed by a human before anything is applied. Keep the encounter reasonably sized (typically no more than ~6 combatants and ~10 actions total) unless asked for something larger, since the whole draft must fit in one response.`;
 
-/** A flexible fill-in-the-blank starting point for the chat-style prompt; users can edit or delete any line. */
-export const AI_PROMPT_TEMPLATE = `Party (PCs): [number of PCs, classes & levels, notable spells or gear]
-Enemies: [types, count, CR or level, notable abilities]
-Battlefield: [starting distance/positions, terrain features]
-Tactics & priorities: [who focuses which target, when to use limited resources, retreat/protect behavior]
-Other goals: [what you want to learn from this simulation]`;
+/**
+ * A structured fill-in-the-blank starting point for the chat-style prompt. It mirrors
+ * the fields the approval preview cards show (per-PC class/level/abilities, per-monster
+ * type/abilities, encounter distance), so a filled-in template gives the model enough
+ * to build complete stat cards. Users can edit or delete any line.
+ */
+export const AI_PROMPT_TEMPLATE = `# Party — Player Characters
+Number of PCs: [e.g. 4]
+List each PC as one line:
+- [Name] — [Class] [Level], key abilities [e.g. INT 18, DEX 14], HP/AC [e.g. 27 HP / 12 AC], signature spells & attacks [e.g. Fireball, Firebolt, Shield], notable features/feats [e.g. Sculpt Spells]
+- ...
+
+# Enemies — Monsters
+Number of monsters: [e.g. 2]
+List each monster (or identical group) as one line:
+- [Name] ×[count] — [type/CR, e.g. Ogre CR 2], key abilities [e.g. STR 19, CON 16], HP/AC [e.g. 59 HP / 11 AC], attacks [e.g. Greatclub +6, 2d8+4], notable abilities [e.g. Multiattack]
+- ...
+
+# Battlefield
+Starting distance between the sides: [e.g. 60 ft]
+Positions / terrain: [e.g. PCs clustered together, ogres advancing from cover]
+
+# Tactics & priorities
+Who focuses which target: [e.g. everyone focus-fires the nearest ogre]
+When to spend limited resources: [e.g. Wizard opens with Fireball, Cleric heals allies below 50% HP]
+Retreat / protect / positioning behavior: [e.g. Rogue stays at range, Fighter guards the Cleric]
+
+# What to learn
+Question this simulation should answer: [e.g. party win rate and average rounds to victory]`;
 
 /** User-turn prompt for an initial draft from a chat-style description. */
 export function buildGenerationUserPrompt(description: string): string {
