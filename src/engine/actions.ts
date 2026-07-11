@@ -10,7 +10,7 @@ import {
   healFlat,
 } from './derive';
 import type { LogEvent } from './log';
-import { approach, effectiveRange, keepAtRange, reposition } from './movement';
+import { approach, applyMovementPolicy, effectiveRange, keepAtRange, reposition } from './movement';
 import {
   abilityMod,
   attackAdvantage,
@@ -21,11 +21,29 @@ import {
   type CombatantState,
   type CombatState,
 } from './state';
-import type { Action, AoeTargets, ConditionApplication, DamageType, Feature } from './types';
+import type { Action, AoeTargets, ConditionApplication, DamageType, Feature, ModifierPolicy, TacticalDecision } from './types';
 
 const BLESS_BONUS = '1d4';
 
 const PHYSICAL: DamageType[] = ['bludgeoning', 'piercing', 'slashing'];
+
+function hitChance(toHit: number, ac: number): number {
+  const needed = ac - toHit;
+  const successfulFaces = Math.max(1, Math.min(19, 21 - needed));
+  return successfulFaces / 20;
+}
+
+function usePreRollFeature(feature: Feature, policy: ModifierPolicy | undefined, baseToHit: number, targetAc: number): boolean {
+  if (!feature.attackModifier) return true;
+  if (policy?.featureIds && !policy.featureIds.includes(feature.id)) return false;
+  if (!policy || policy.kind === 'always') return true;
+  if (policy.kind === 'never') return false;
+  const modifiedToHit = baseToHit + (feature.attackModifier.toHit ?? 0);
+  if (policy.kind === 'minimumHitChance') return hitChance(modifiedToHit, targetAc) >= (policy.minimumHitChance ?? 0);
+  const damageDelta = policy.damageDelta ?? feature.attackModifier.damage ?? 0;
+  const toHitDelta = policy.toHitDelta ?? feature.attackModifier.toHit ?? 0;
+  return hitChance(modifiedToHit, targetAc) * damageDelta + (hitChance(modifiedToHit, targetAc) - hitChance(baseToHit, targetAc)) * Math.max(0, damageDelta - toHitDelta) > 0;
+}
 
 /** Combine typed resistance/immunity/vulnerability (combatant traits + conditions) into a multiplier. */
 function damageMultiplier(target: CombatantState, damageType?: DamageType): { mult: number; note: string } {
@@ -278,6 +296,7 @@ export function performAction(
   action: Action,
   targets: CombatantState[],
   events: LogEvent[],
+  decision?: TacticalDecision,
 ): void {
   // Spend resources up front.
   if (action.spellLevel && action.spellLevel > 0) {
@@ -323,7 +342,7 @@ export function performAction(
     }
 
     case 'attack': {
-      resolveAttack(state, rng, actor, action, targets, events);
+      resolveAttack(state, rng, actor, action, targets, events, decision);
       keepAtRange(
         state,
         actor,
@@ -503,6 +522,7 @@ function resolveAttack(
   action: Action,
   targets: CombatantState[],
   events: LogEvent[],
+  decision?: TacticalDecision,
 ): void {
   const attackCount = action.attackCount ?? 1;
   const weapon = action.weaponId ? state.weaponsById[action.weaponId] : undefined;
@@ -510,8 +530,9 @@ function resolveAttack(
   const { bless } = blessAdvantageBonus(actor);
   const range = effectiveRange(action, weapon);
 
-  // Move into range of the primary target if needed (move + action economy).
-  if (targets[0] && targets[0] !== actor) approach(state, actor, targets[0], range, events);
+  // Movement policy is evaluated before attack; legacy behavior closes only when needed.
+  if (decision?.movementPolicy) applyMovementPolicy(state, actor, targets[0], decision.movementPolicy, range, events);
+  else if (targets[0] && targets[0] !== actor) approach(state, actor, targets[0], range, events);
 
   for (const target of targets) {
     // Range check (after movement): out of range aborts; long range = disadvantage.
@@ -542,7 +563,7 @@ function resolveAttack(
         rangeAdv,
       );
       let toHit = profile.toHit;
-      const preRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll').filter((f) => canSpendFeature(actor, f));
+      const preRollFeatures = applicableFeatures(state, actor, action, 'beforeAttackRoll').filter((f) => canSpendFeature(actor, f) && usePreRollFeature(f, decision?.modifierPolicy, profile.toHit, target.base.ac));
       for (const feature of preRollFeatures) {
         toHit += feature.attackModifier?.toHit ?? 0;
         if (feature.spend?.trigger === 'always') spendFeature(actor, feature);
@@ -843,3 +864,17 @@ export function consumeExtraActionFeature(state: CombatState, actor: CombatantSt
 
 // re-export for tests
 export { abilityMod, critDouble, rollDamageTotal };
+
+
+export function performTacticalDecision(
+  state: CombatState,
+  rng: RNG,
+  actor: CombatantState,
+  decision: TacticalDecision,
+  events: LogEvent[],
+): void {
+  const targets = decision.targets
+    .map((id) => state.combatants.find((c) => c.base.id === id))
+    .filter((c): c is CombatantState => !!c);
+  performAction(state, rng, actor, decision.baseAction, targets, events, decision);
+}

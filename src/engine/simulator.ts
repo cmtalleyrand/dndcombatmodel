@@ -1,10 +1,11 @@
 // The simulation driver: initiative, round loop, turn resolution, and a single-run record.
 
-import { consumeExtraActionFeature, dropConcentration, performAction } from './actions';
+import { consumeExtraActionFeature, dropConcentration, performAction, performTacticalDecision } from './actions';
 import { CONDITION_CATALOG } from './conditions';
 import { RNG, rollD20, rollDice, deriveSeed } from './dice';
 import type { LogEvent, TurnFrame, CombatantSnapshot } from './log';
-import { chooseAction } from './rules';
+import { chooseAction, chooseTacticalDecision } from './rules';
+import type { TacticalDecision } from './types';
 import {
   abilityMod,
   buildCombatState,
@@ -268,7 +269,7 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
           message: `${actor.base.name} cannot act (incapacitated).`,
         });
       } else {
-        const choice = chooseAction(state, actor);
+        const choice = actor.base.tacticalPolicy ? chooseTacticalDecision(state, actor) : chooseAction(state, actor);
         if (!choice) {
           events.push({
             round,
@@ -278,19 +279,26 @@ export function runSimulation(scenario: Scenario, seed: number, recordFrames = f
             message: `${actor.base.name} has no valid action and waits.`,
           });
         } else {
-          performAction(state, rng, actor, choice.action, choice.targets, events);
+          if ('baseAction' in choice) performTacticalDecision(state, rng, actor, choice as TacticalDecision, events);
+          else performAction(state, rng, actor, choice.action, choice.targets, events);
         }
 
         // Bonus-action phase: after the main action, take one bonus-cost action if a rule fires.
         if (isAlive(actor) && canAct(actor)) {
-          const bonus = chooseAction(state, actor, 'bonus');
-          if (bonus) performAction(state, rng, actor, bonus.action, bonus.targets, events);
+          const bonus = actor.base.tacticalPolicy ? chooseTacticalDecision(state, actor, 'bonus') : chooseAction(state, actor, 'bonus');
+          if (bonus) {
+            if ('baseAction' in bonus) performTacticalDecision(state, rng, actor, bonus as TacticalDecision, events);
+            else performAction(state, rng, actor, bonus.action, bonus.targets, events);
+          }
         }
 
         const extraActions = isAlive(actor) && canAct(actor) ? consumeExtraActionFeature(state, actor) : 0;
         for (let extra = 0; extra < extraActions && isAlive(actor) && canAct(actor); extra++) {
-          const extraChoice = chooseAction(state, actor);
-          if (extraChoice) performAction(state, rng, actor, extraChoice.action, extraChoice.targets, events);
+          const extraChoice = actor.base.tacticalPolicy ? chooseTacticalDecision(state, actor) : chooseAction(state, actor);
+          if (extraChoice) {
+            if ('baseAction' in extraChoice) performTacticalDecision(state, rng, actor, extraChoice as TacticalDecision, events);
+            else performAction(state, rng, actor, extraChoice.action, extraChoice.targets, events);
+          }
         }
       }
 
